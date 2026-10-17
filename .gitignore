@@ -1,0 +1,37 @@
+# Default deny: ignore everything, then allow what belongs in the repo.
+*
+
+!/.gitignore
+!/.python-version
+!/LICENSE
+!/README.md
+!/pyproject.toml
+!/uv.lock
+
+!/.github/
+!/.github/workflows/
+!/.github/workflows/*.yml
+
+!/configs/
+!/configs/*.toml
+
+!/reference_images/
+!/reference_images/reference_*.png
+
+!/src/
+!/src/**/
+!/src/**/*.py
+!/src/**/py.typed
+
+!/tests/
+!/tests/**/
+!/tests/**/*.py
+!/tests/fixtures/*.jpg
+
+# Never commit caches, even inside allowed directories.
+__pycache__/
+*.py[oc]
+.DS_Store
+
+# Local tools, never committed (also covered by the default deny above).
+/local/

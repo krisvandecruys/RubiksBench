@@ -1,0 +1,46 @@
+[project]
+name = "rubiksbench"
+version = "0.2.0"
+description = "Benchmark: can image models draw a valid scrambled 3x3 Rubik's Cube?"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [
+    { name = "kvlxai", email = "344077227+kvlxai@users.noreply.github.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "fal-client>=1.0.3",
+    "httpx>=0.28.1",
+    "huggingface-hub>=2.2.0",
+    "kociemba>=1.2.1",
+    "magiccube>=1.2.0",
+    "opencv-python-headless>=5.0.0.93",
+    "rembg[cpu]>=2.0.85",
+    "runware-sdk>=1.7.5",
+]
+
+[project.scripts]
+rubiksbench = "rubiksbench.cli:main"
+
+[project.optional-dependencies]
+ml = [
+    "pillow>=12.3.0",
+    "torch>=2.14.1",
+    "torchvision>=0.29.1",
+    "transformers>=5.20.1",
+]
+
+[build-system]
+requires = ["uv_build>=0.12.23,<0.13.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pyright]
+venvPath = "."
+venv = ".venv"
+

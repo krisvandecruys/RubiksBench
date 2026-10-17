@@ -1,0 +1,27 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: .python-version
+      # rembg downloads its U2-Net model (~176 MB) on first use.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.u2net
+          key: u2net-${{ hashFiles('uv.lock') }}
+          restore-keys: u2net-
+      # Without the `ml` extra (torch), so the SAM tests are skipped.
+      - run: uv sync --locked
+      - run: uv run --locked pytest -q
