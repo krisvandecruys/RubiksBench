@@ -8,6 +8,10 @@ edges, giving faces U = T-UR-C-UL, F = UL-C-B-LL and R = C-UR-LR-B.
 
 Faces are named by position: top = U, front-left = F, front-right = R. Each
 quad lists its corners in Kociemba facelet order (facelets 1, 3, 9, 7).
+
+Cubes are often drawn with rounded corners, which a polygon simplification cuts
+off, pulling the hexagon's vertices inwards. Each vertex is therefore taken
+where the straight middle parts of its two neighbouring sides meet.
 """
 
 from dataclasses import dataclass
@@ -41,6 +45,35 @@ class FaceLayout:
             "hexagon_fit": round(self.hexagon_fit, 4),
             "quads": {f: q.round(1).tolist() for f, q in self.quads.items()},
         }
+
+
+# Share of each silhouette side, around its middle, used to fit its line.
+_SIDE_MIDDLE = 0.6
+
+
+def _segment_distance(points: np.ndarray, a: np.ndarray, b: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Distance from each point to segment a-b, and where along it (0-1) the closest point lies."""
+    d = b - a
+    s = np.clip(((points - a) @ d) / (d @ d), 0, 1)
+    return np.linalg.norm(points - (a + s[:, None] * d), axis=1), s
+
+
+def _straight_sides(contour: np.ndarray, hexagon: np.ndarray) -> np.ndarray:
+    """Hexagon vertices where the lines fitted to each side's straight middle part meet."""
+    points = contour.reshape(-1, 2).astype(np.float32)
+    distances, positions = zip(*(_segment_distance(points, hexagon[i], hexagon[(i + 1) % 6]) for i in range(6)))
+    nearest = np.argmin(np.stack(distances), axis=0)
+    lines = []
+    for i in range(6):
+        side = points[(nearest == i) & (np.abs(positions[i] - 0.5) < _SIDE_MIDDLE / 2)]
+        if len(side) < 10:
+            return hexagon
+        vx, vy, x0, y0 = cv2.fitLine(side, cv2.DIST_HUBER, 0, 0.01, 0.01).ravel()
+        lines.append(np.cross([x0, y0, 1.0], [x0 + vx, y0 + vy, 1.0]))
+    vertices = [np.cross(lines[i - 1], lines[i]) for i in range(6)]
+    if any(abs(v[2]) < 1e-9 for v in vertices):
+        return hexagon
+    return np.float32([v[:2] / v[2] for v in vertices])
 
 
 def _overlap(shape: tuple[int, ...], contour: np.ndarray, hexagon: np.ndarray) -> float:
@@ -113,7 +146,8 @@ class CubeDetector:
         # Image y points down, so increasing angle runs clockwise on screen.
         points = points[np.argsort(np.arctan2(points[:, 1] - centre[1], points[:, 0] - centre[0]))]
         top = int(np.argmin(points[:, 1]))
-        t, ur, lr, b, ll, ul = (points[(top + i) % 6] for i in range(6))
+        points = _straight_sides(largest, np.roll(points, -top, axis=0))
+        t, ur, lr, b, ll, ul = points
         inner, spread = _inner_vertex(t, ur, lr, b, ll, ul)
         if inner is None:
             return None

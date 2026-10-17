@@ -61,11 +61,20 @@ def _search(
     return tuple(path) if dfs(0, 0, 0) else None
 
 
+@dataclass(frozen=True)
+class Culprit:
+    """Observed stickers that explain a failure, e.g. the stickers of an impossible corner."""
+
+    reason: str
+    facelets: tuple[int, ...]
+
+
 @dataclass
 class _PieceAnalysis:
     by_parity: dict[int, tuple[Placement, ...]]
     flags: list[Flag]
     reasons: list[str]
+    culprits: list[Culprit] = field(default_factory=list)
 
 
 def _analyse(
@@ -77,15 +86,23 @@ def _analyse(
     modulus: int,
 ) -> _PieceAnalysis:
     impossible = Flag.IMPOSSIBLE_CORNER if kind == "corner" else Flag.IMPOSSIBLE_EDGE
-    reasons = []
+
+    def seen(slot: int) -> tuple[int, ...]:
+        return tuple(i for i in slot_facelets[slot] if observation.stickers[i] is not None)
+
+    def colors(slot: int) -> str:
+        return "-".join(observation.stickers[i] or "" for i in seen(slot))
+
+    reasons, culprits = [], []
     for slot, options in enumerate(candidates):
         if not options:
-            seen = ", ".join(
+            shown = ", ".join(
                 f"{facelet_name(i)}={observation.stickers[i] or '?'}" for i in slot_facelets[slot]
             )
-            reasons.append(f"{kind} slot {slot_names[slot]} ({seen}) matches no {kind} cubie")
+            reasons.append(f"{kind} slot {slot_names[slot]} ({shown}) matches no {kind} cubie")
+            culprits.append(Culprit(f"impossible {kind} {slot_names[slot]} ({colors(slot)})", seen(slot)))
     if reasons:
-        return _PieceAnalysis({}, [impossible], reasons)
+        return _PieceAnalysis({}, [impossible], reasons, culprits)
 
     if _search(candidates, modulus, None, None) is None:
         # Name cubies that several slots can only be filled by, when that is the cause.
@@ -93,15 +110,22 @@ def _analyse(
         for slot, options in enumerate(candidates):
             if len(cubies := {p.cubie for p in options}) == 1:
                 forced.setdefault(cubies.pop(), []).append(slot_names[slot])
-        clashes = [
-            f"{kind} cubie {slot_names[cubie]} is required in slots {', '.join(slots)}"
-            for cubie, slots in forced.items()
-            if len(slots) > 1
-        ]
+        clashes = {cubie: slots for cubie, slots in forced.items() if len(slots) > 1}
         return _PieceAnalysis(
             {},
             [Flag.DUPLICATE_PIECE],
-            clashes or [f"no assignment uses each {kind} cubie exactly once"],
+            [
+                f"{kind} cubie {slot_names[cubie]} is required in slots {', '.join(slots)}"
+                for cubie, slots in clashes.items()
+            ]
+            or [f"no assignment uses each {kind} cubie exactly once"],
+            [
+                Culprit(
+                    f"duplicate {kind} in {', '.join(slots)}",
+                    tuple(i for s in slots for i in seen(slot_names.index(s))),
+                )
+                for slots in clashes.values()
+            ],
         )
 
     by_parity = {
@@ -125,6 +149,9 @@ class SchemeAttempt:
     state: CubieState | None
     flags: list[Flag] = field(default_factory=list)
     reasons: list[str] = field(default_factory=list)
+    # The stickers behind a piece-level failure; empty for invariant and parity failures,
+    # which belong to the whole cube rather than to any one piece.
+    culprits: list[Culprit] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -159,7 +186,7 @@ def complete(observation: Observation, scheme: ColorScheme) -> SchemeAttempt:
     flags = corners.flags + edges.flags
     reasons = corners.reasons + edges.reasons
     if flags:
-        return SchemeAttempt(scheme, None, flags, reasons)
+        return SchemeAttempt(scheme, None, flags, reasons, corners.culprits + edges.culprits)
 
     for parity in (0, 1):
         if parity in corners.by_parity and parity in edges.by_parity:

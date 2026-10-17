@@ -98,12 +98,14 @@ def test_run_generates_serially_and_scores(tmp_path):
     generations = store.generations()
     assert all("seed" in g["request"] for g in generations)
     assert json.loads(paths["json"].read_text())["scores"] == scores
-    # One valid image (14 points) and one unannotated, so inconclusive at the first check (0.5).
-    assert good["rubric_mean"] == pytest.approx(7.25)
+    # One valid image (15 points) and one unannotated, so inconclusive at the first check (0.5).
+    assert good["rubric_mean"] == pytest.approx(7.75)
+    # Validity: the valid image is 100%, the unreadable one 0%.
+    assert good["validity_mean"] == pytest.approx(0.5)
     assert (good["passed"], good["failed"], good["generation_failures"]) == (1, 1, 0)
     assert (broken["passed"], broken["failed"], broken["generation_failures"]) == (0, 0, 2)
     report = paths["html"].read_text()
-    assert report.startswith("<!doctype html>") and "<b>7.2</b>" in report
+    assert report.startswith("<!doctype html>") and "<b>50%</b>" in report
     assert "images/good__0000.png" in report and "unseeded" not in report
 
 

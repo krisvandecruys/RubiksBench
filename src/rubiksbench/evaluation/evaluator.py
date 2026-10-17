@@ -4,13 +4,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .. import EVALUATOR_VERSION
-from ..cube.completion_solver import SchemeAttempt, first_completion
-from ..cube.constraints import abstract_schemes, color_flags, standard_schemes
+from ..cube.completion_solver import Culprit, SchemeAttempt, first_completion
+from ..cube.constraints import abstract_schemes, color_flags, scheme_free_piece_failures, standard_schemes
+from ..cube.facelets import facelet_name
 from ..cube.observation import Observation
 from ..cube.witness import Witness, build_witness
 from ..vision.extraction import Extraction
 from .rubric import grade
-from .taxonomy import GEOMETRY_FAILURES, UNREADABLE, Flag, Verdict
+from .validity import validity
+from .taxonomy import GEOMETRY_FAILURES, STICKER_DEFECTS, UNREADABLE, Flag, Verdict
 
 
 @dataclass
@@ -23,6 +25,8 @@ class ValidityCheck:
     schemes_tried: int = 0
     # Best piece-level stage reached under any color scheme (see SchemeAttempt.stage).
     furthest_stage: int = 0
+    # Stickers behind the failure under the scheme that got furthest (see _failed).
+    culprits: list[Culprit] = field(default_factory=list)
     witness: Witness | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -32,6 +36,9 @@ class ValidityCheck:
             "reasons": self.reasons,
             "schemes_tried": self.schemes_tried,
             "furthest_stage": self.furthest_stage,
+            "culprits": [
+                {"reason": c.reason, "facelets": [facelet_name(i) for i in c.facelets]} for c in self.culprits
+            ],
         }
         if w := self.witness:
             out["witness"] = {
@@ -67,7 +74,13 @@ def _check(
     observation: Observation, schemes, pre_flags: list[Flag], pre_reasons: list[str], with_scramble: bool
 ) -> ValidityCheck:
     if pre_flags:
-        return ValidityCheck(False, pre_flags, pre_reasons)
+        # No color scheme fits, so the completion search cannot run; still report the piece
+        # failures that need no scheme, so they are flagged as they would be otherwise.
+        pieces = scheme_free_piece_failures(observation)
+        flags = pre_flags + sorted({f for f, _ in pieces} - set(pre_flags))
+        return ValidityCheck(
+            False, flags, pre_reasons + [c.reason for _, c in pieces], culprits=[c for _, c in pieces]
+        )
     success, failures = first_completion(observation, schemes)
     tried = len(failures) + (success is not None)
     if success is not None:
@@ -84,7 +97,12 @@ def _failed(failures: list[SchemeAttempt], tried: int) -> ValidityCheck:
     # the per-scheme reasons say which.
     flags = sorted({f for a in failures for f in a.flags} | {Flag.NO_LEGAL_COMPLETION})
     reasons = [f"[{a.scheme}] {r}" for a in failures for r in a.reasons]
-    return ValidityCheck(False, flags, reasons, tried, max((a.stage for a in failures), default=0))
+    stage = max((a.stage for a in failures), default=0)
+    # Which pieces are "wrong" depends on the scheme, so name the fewest culprits among
+    # the schemes that got furthest: the smallest explanation, not the only one.
+    explained = [a for a in failures if a.stage == stage and a.culprits]
+    culprits = min(explained, key=lambda a: len(a.culprits)).culprits if explained else []
+    return ValidityCheck(False, flags, reasons, tried, stage, culprits)
 
 
 def evaluate_extraction(extraction: Extraction, *, with_scramble: bool = True) -> dict[str, Any]:
@@ -103,17 +121,20 @@ def evaluate_extraction(extraction: Extraction, *, with_scramble: bool = True) -
     else:
         if extraction.observation is None:
             flags.add(Flag.NO_EXTRACTION)
+        # Letters, or two colors on one sticker, make the image invalid even when the colors form a
+        # legal cube or are partly unsure; the checks below still show how far it got.
+        defects = sorted(flags & STICKER_DEFECTS)
         if unreadable := sorted(flags & UNREADABLE):
-            record |= {"verdict": str(Verdict.INCONCLUSIVE), "flags": [str(f) for f in unreadable]}
+            verdict = Verdict.INVALID if defects else Verdict.INCONCLUSIVE
+            record |= {"verdict": str(verdict), "flags": [str(f) for f in defects + unreadable]}
         else:
             assert extraction.observation is not None
             validation = validate(extraction.observation, with_scramble=with_scramble).to_dict()
             record |= validation
-            # Letters or markings on the stickers make the image invalid even when the
-            # colors form a legal cube; the checks below still show how far it got.
-            if Flag.MARKED_STICKERS in flags:
-                record |= {"verdict": str(Verdict.INVALID), "flags": [str(Flag.MARKED_STICKERS), *record["flags"]]}
-    return record | {"rubric": grade(extraction, validation)}
+            if defects:
+                record |= {"verdict": str(Verdict.INVALID), "flags": [str(f) for f in defects] + record["flags"]}
+    rubric = grade(extraction, validation)
+    return record | {"rubric": rubric, "validity": validity(extraction, rubric["checks"])}
 
 
 def validate(

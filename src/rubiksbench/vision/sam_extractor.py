@@ -25,8 +25,8 @@ import numpy as np
 
 from ..cube.observation import Observation
 from ..evaluation.taxonomy import Flag
-from .color_classifier import classify
-from .extraction import FAIL, INCONCLUSIVE, PASS, Extraction
+from .color_classifier import classify, second_color_share
+from .extraction import FAIL, INCONCLUSIVE, PASS, Extraction, geometry
 from .grid_extractor import _STROKE
 
 MODEL_ID = "facebook/sam2.1-hiera-small"
@@ -43,6 +43,7 @@ class Sticker:
     directions: tuple[np.ndarray, np.ndarray]  # unit vectors of its two edge pairs
     size: float  # mean edge length
     marking: float  # share of sharp-edge pixels inside the sticker (letters, logos)
+    second_color: float  # share of the sticker in a clearly different second color
 
 
 def _sticker(mask: np.ndarray, image: np.ndarray) -> Sticker | None:
@@ -75,7 +76,8 @@ def _sticker(mask: np.ndarray, image: np.ndarray) -> Sticker | None:
     magnitude = cv2.magnitude(cv2.Sobel(gray, cv2.CV_32F, 1, 0), cv2.Sobel(gray, cv2.CV_32F, 0, 1))
     core = cv2.erode(m, np.ones((5, 5), np.uint8), iterations=4).astype(bool)
     marking = float((magnitude[core] > _STROKE).mean()) if core.any() else 0.0
-    return Sticker(quad, quad.mean(axis=0), (float(r), float(g), float(b)), tuple(directions), size, marking)
+    second = second_color_share(image[core]) if core.any() else 0.0
+    return Sticker(quad, quad.mean(axis=0), (float(r), float(g), float(b)), tuple(directions), size, marking, second)
 
 
 def _dedupe(stickers: list[Sticker]) -> list[Sticker]:
@@ -228,10 +230,24 @@ class SamExtractor:
                         placed.append((s, face, 3 * r + c))
             grids[face] = cells
         details["bins_per_face"] = bins_per_face
-        quality = {"cube": PASS, "shape": PASS, "grid": PASS, "stickers": PASS, "colors": PASS}
+        quality = {"cube": PASS, "shape": PASS, "grid": PASS, "stickers": PASS, "single_color": PASS, "colors": PASS}
         # Same rule as the vision extractor: letters on most non-center stickers.
         marked = sum(s.marking > 0.04 for s, _, index in placed if index != 4)
         details["marked_stickers"] = marked
+        outlines = {
+            face: cv2.convexHull(np.concatenate([s.quad for s, f in zip(stickers, faces_of) if f == face])).reshape(-1, 2)
+            for face in bins_per_face
+        }
+        details["geometry"] = geometry(
+            (image.shape[1], image.shape[0]), outlines,
+            {f"{face}{index + 1}": s.quad for s, face, index in placed},
+            {face: (cols, rows) for face, (rows, cols) in bins_per_face.items()},
+            [f"{face}{index + 1}" for s, face, index in placed if index != 4 and s.marking > 0.04],
+            split := [f"{face}{index + 1}" for s, face, index in placed if index != 4 and s.second_color > 0.10],
+        )
+        if split:  # same rule as the vision extractor
+            flags.append(Flag.SPLIT_STICKERS)
+            quality["single_color"] = FAIL
         if marked >= 16:
             flags.append(Flag.MARKED_STICKERS)
             quality["stickers"] = FAIL

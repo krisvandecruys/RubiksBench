@@ -6,7 +6,8 @@ from collections.abc import Iterator
 
 from ..evaluation.taxonomy import Flag
 from .color_scheme import STANDARD_COLORS, STANDARD_OPPOSITE_COLOR, STANDARD_ORIENTATIONS, ColorScheme
-from .facelets import FACES, OPPOSITE_FACE
+from .completion_solver import Culprit
+from .facelets import CORNER_FACELETS, CORNER_NAMES, EDGE_FACELETS, EDGE_NAMES, FACES, OPPOSITE_FACE
 from .observation import Observation
 
 
@@ -25,6 +26,31 @@ def color_flags(observation: Observation) -> tuple[list[Flag], list[str]]:
         flags.append(Flag.DUPLICATE_CENTERS)
         reasons.append(f"color(s) {duplicated} appear on more than one center")
     return flags, reasons
+
+
+def scheme_free_piece_failures(observation: Observation) -> list[tuple[Flag, Culprit]]:
+    """Piece failures that hold under every color scheme, so they need no valid centers.
+
+    A piece showing one color twice cannot exist, and two fully visible pieces with the
+    same set of colors would need the same cubie. These are found even when the centers
+    rule out every scheme (e.g. two white centers), which the completion search cannot do.
+    """
+    found: list[tuple[Flag, Culprit]] = []
+    complete: dict[tuple[str, frozenset[str]], list[tuple[str, tuple[int, ...]]]] = {}
+    for kind, names, slots in (("corner", CORNER_NAMES, CORNER_FACELETS), ("edge", EDGE_NAMES, EDGE_FACELETS)):
+        impossible = Flag.IMPOSSIBLE_CORNER if kind == "corner" else Flag.IMPOSSIBLE_EDGE
+        for name, facelets in zip(names, slots):
+            shown = tuple(i for i in facelets if observation.stickers[i] is not None)
+            colors = [observation.stickers[i] for i in shown]
+            if len(set(colors)) < len(colors):
+                found.append((impossible, Culprit(f"impossible {kind} {name} ({'-'.join(colors)})", shown)))
+            elif len(shown) == len(facelets):
+                complete.setdefault((kind, frozenset(colors)), []).append((name, shown))
+    for (kind, _), group in complete.items():
+        if len(group) > 1:
+            where = ", ".join(name for name, _ in group)
+            found.append((Flag.DUPLICATE_PIECE, Culprit(f"duplicate {kind} in {where}", sum((f for _, f in group), ()))))
+    return found
 
 
 def abstract_schemes(observation: Observation) -> Iterator[ColorScheme]:

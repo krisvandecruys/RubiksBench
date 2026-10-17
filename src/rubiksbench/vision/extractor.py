@@ -16,7 +16,7 @@ from ..cube.observation import Observation
 from ..evaluation.taxonomy import Flag
 from .color_classifier import StickerColor, classify
 from .cube_detector import CubeDetector, FaceLayout
-from .extraction import FAIL, INCONCLUSIVE, PASS, Extraction, Extractor
+from .extraction import FAIL, INCONCLUSIVE, PASS, Extraction, Extractor, geometry
 from . import recognizer
 from .grid_extractor import SIZE, read_face
 
@@ -45,7 +45,9 @@ class AnnotationExtractor:
         grid = FAIL if Flag.WRONG_GRID_SIZE in flags else PASS
         shape = FAIL if Flag.GEOMETRY_INVALID in flags else PASS
         stickers = FAIL if Flag.MARKED_STICKERS in flags else PASS
-        quality = {"cube": PASS, "shape": shape, "grid": grid, "stickers": stickers, "colors": PASS}
+        single = FAIL if Flag.SPLIT_STICKERS in flags else PASS
+        quality = {"cube": PASS, "shape": shape, "grid": grid, "stickers": stickers, "single_color": single,
+                   "colors": PASS}
         return Extraction(self.name, observation, 1.0, flags, {"annotation": path.name}, quality)
 
 
@@ -74,6 +76,9 @@ class VisionExtractor:
     # Letters on at least this many of the 24 visible non-center stickers make the image
     # invalid (lettered cubes: 21-22; clean cubes: 0-12). Centers may carry a brand logo.
     min_marked_stickers = 16
+    # A non-center sticker shows two colors when this share of it is a clearly different
+    # color (two-colored stickers: 0.20-0.34; plain ones up to 0.02).
+    split_sticker = 0.10
     # Smallest silhouette/hexagon overlap for a clean cube view (cubes: 0.95-0.99;
     # a rabbit 0.83, a teapot 0.71, a cube held in a hand 0.71).
     min_hexagon_fit = 0.93
@@ -118,7 +123,7 @@ class VisionExtractor:
         clean = layout.hexagon_fit >= self.min_hexagon_fit
         # Without CLIP, a clean cube silhouette is the evidence that a cube is there at all.
         cube = recognized or (PASS if clean else INCONCLUSIVE)
-        quality = {"cube": cube, "shape": PASS, "grid": PASS, "stickers": PASS, "colors": PASS}
+        quality = {"cube": cube, "shape": PASS, "grid": PASS, "stickers": PASS, "single_color": PASS, "colors": PASS}
         if cube != PASS:
             flags.append(Flag.VISION_LOW_CONFIDENCE)
         if layout.inner_spread > self.max_inner_spread or not clean:
@@ -144,6 +149,7 @@ class VisionExtractor:
                 "column_dominance": round(grid.column_dominance, 2),
                 "row_dominance": round(grid.row_dominance, 2),
                 "marking": [round(m, 3) for m in grid.marking],
+                "second_color": [round(s, 3) for s in grid.second_color],
                 "stickers": [
                     {"label": c.label, "margin": round(c.margin, 2), "rgb": [round(v) for v in rgb],
                      "hue": round(c.hue, 1), "chroma": round(c.chroma, 1)}
@@ -154,6 +160,19 @@ class VisionExtractor:
             m > self.marked_sticker for f in details["faces"].values() for i, m in enumerate(f["marking"]) if i != 4
         )
         details["marked_stickers"] = marked
+        details["geometry"] = geometry(
+            (image.shape[1], image.shape[0]), layout.quads,
+            {f"{face}{i + 1}": cell for face, cells in sticker_quads(layout, grids).items() for i, cell in enumerate(cells)},
+            grids,
+            [f"{face}{i + 1}" for face, d in details["faces"].items() for i, m in enumerate(d["marking"])
+             if i != 4 and m > self.marked_sticker],
+            # Centers are left out: they may carry a colored brand logo.
+            split := [f"{face}{i + 1}" for face, d in details["faces"].items() if grids[face] == (3, 3)
+                      for i, s in enumerate(d["second_color"]) if i != 4 and s > self.split_sticker],
+        )
+        if split:
+            flags.append(Flag.SPLIT_STICKERS)
+            quality["single_color"] = FAIL
         if marked >= self.min_marked_stickers:
             flags.append(Flag.MARKED_STICKERS)
             quality["stickers"] = FAIL
@@ -168,6 +187,18 @@ class VisionExtractor:
             details["overlay"] = overlay_path.name
         observation = Observation.from_faces(faces)
         return Extraction(self.name, observation, min_margin, sorted(set(flags)), details, quality)
+
+
+def sticker_quads(layout: FaceLayout, grids: dict[str, tuple[int, int]]) -> dict[str, np.ndarray]:
+    """Each 3x3 face's nine sticker cells in image pixels (9x4x2, row by row)."""
+    target = np.float32([[0, 0], [1, 0], [1, 1], [0, 1]])
+    unit = np.float32([[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]] for r in range(3) for c in range(3)]) / 3
+    out = {}
+    for face, quad in layout.quads.items():
+        if grids[face] == (3, 3):
+            back = cv2.getPerspectiveTransform(target, np.float32(quad))
+            out[face] = cv2.perspectiveTransform(unit.reshape(-1, 1, 2), back).reshape(9, 4, 2)
+    return out
 
 
 def draw_overlay(

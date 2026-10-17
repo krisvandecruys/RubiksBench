@@ -5,6 +5,8 @@ from dataclasses import dataclass
 import cv2
 import numpy as np
 
+from .color_classifier import second_color_share
+
 SIZE = 300  # flattened face, pixels per side
 # Sample the middle 40% of each cell, away from borders and rounded corners.
 _CELL_LO, _CELL_HI = 0.3, 0.7
@@ -21,6 +23,8 @@ class FaceGrid:
     rgb: list[tuple[float, float, float]]  # 9 sticker colors, row-major
     # Per sticker, row-major: share of sharp-edge pixels in its centre (letters, logos).
     marking: list[float]
+    # Per sticker, row-major: share of its pixels in a clearly different second color.
+    second_color: list[float]
 
 
 def flatten(image_bgr: np.ndarray, quad: np.ndarray) -> np.ndarray:
@@ -85,6 +89,22 @@ def sticker_marking(face_bgr: np.ndarray) -> list[float]:
     return out
 
 
+# Where a second color is looked for: most of the cell, clear of its rounded corners.
+_SPLIT_LO, _SPLIT_HI = 0.2, 0.8
+
+
+def sticker_second_color(face_bgr: np.ndarray) -> list[float]:
+    """Share of each sticker's pixels in a second, clearly different color, row-major."""
+    step = SIZE / 3
+    return [
+        second_color_share(face_bgr[
+            int((row + _SPLIT_LO) * step) : int((row + _SPLIT_HI) * step),
+            int((col + _SPLIT_LO) * step) : int((col + _SPLIT_HI) * step),
+        ])
+        for row in range(3) for col in range(3)
+    ]
+
+
 def sample_cells(face_bgr: np.ndarray) -> list[tuple[float, float, float]]:
     rgb = []
     step = SIZE / 3
@@ -102,4 +122,7 @@ def sample_cells(face_bgr: np.ndarray) -> list[tuple[float, float, float]]:
 def read_face(image_bgr: np.ndarray, quad: np.ndarray) -> FaceGrid:
     face = flatten(image_bgr, quad)
     (columns, column_dominance), (rows, row_dominance) = grid_period(face)
-    return FaceGrid(face, columns, rows, column_dominance, row_dominance, sample_cells(face), sticker_marking(face))
+    return FaceGrid(
+        face, columns, rows, column_dominance, row_dominance, sample_cells(face), sticker_marking(face),
+        sticker_second_color(face),
+    )

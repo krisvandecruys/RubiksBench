@@ -6,7 +6,7 @@ Can image models draw a **valid scrambled 3×3 Rubik's Cube**? RubiksBench gener
 prompt, reads the visible stickers, and checks whether a real, reachable cube state could look like
 that.
 
-**Latest results:** [kvlxai.github.io/RubiksBench](https://kvlxai.github.io/RubiksBench/) (14 models, 3 images each, plus real-cube reference photos).
+**Latest results:** [kvlxai.github.io/RubiksBench](https://kvlxai.github.io/RubiksBench/) (14 models, 10 images each, plus real-cube reference photos).
 
 [![RubiksBench results](https://kvlxai.github.io/RubiksBench/preview.png)](https://kvlxai.github.io/RubiksBench/)
 
@@ -23,28 +23,71 @@ uv run --env-file .env rubiksbench backfill runs/<run>  # resend a run's failed 
 
 ## Scoring
 
-Every image is graded on 14 checks, in order. Each check earns 1 point when passed, ½ when
-inconclusive and 0 when failed. A check also scores 0 ("blocked") when an earlier check it depends
-on did not pass, so a box-shaped cube stops at the 3×3 check and isn't tested for solvability. The
-checks and their dependencies live in `evaluation/rubric.py`, and every report lists them.
+### Validity (the headline)
+
+Validity says how close an image comes to a valid, scrambled, standard 3×3 cube, from 0% to 100%:
+
+```
+validity = 1 − (repairs + defects) / chance        (clipped to 0–100%)
+```
+
+- **repairs** is the fewest visible stickers you would have to recolor to get a valid standard cube.
+  It's exact: a dynamic program over every corner and edge slot, for each of the 24 orientations of the
+  standard colors, keeping only reachable states (each piece once, twist, flip and parity). Hidden
+  stickers are free, and the report lists which stickers to recolor.
+- **defects** are stickers no recoloring fixes: letters, or two colors on one sticker.
+- **chance** is the average repair distance of random colors on the 27 visible stickers: 4.45. The
+  three hidden faces leave so much freedom that random stickers are only about four recolorings from a
+  valid cube. So 0% means "no better than random", not "everything wrong".
+
+A valid cube scores 100%, and each sticker to fix costs about 22 points. An image that isn't read as
+a scrambled 3×3 cube scores 0%. Every mistake costs only the stickers it takes to fix it, so nothing is
+counted twice. Each model's score is the mean over its images, with a 95% CI. The models are ranked
+by it, and the gallery is sorted by it.
+
+### Rubric (what is wrong)
+
+Every image is graded on 15 checks. Each check earns 1 point when passed, ½ when inconclusive and 0
+when failed. Every mistake costs its point once. A check is "blocked" (it scores 0, but doesn't count
+as a mistake of its own) in two cases:
+- **It can't be decided.** Sticker checks need the image read as a 3×3 cube, so a box-shaped cube
+  stops at the 3×3 check. Color checks also need confidently named colors.
+- **Its failure would only be a consequence of an earlier failure.** A duplicate center already rules
+  out the standard center order, a seventh color rules out a standard palette, and an impossible piece
+  rules out a solvable cube.
+
+Independent mistakes always count, whatever failed before. A corner showing blue twice fails
+"possible pieces" even next to two white centers. Opposite colors on side-by-side centers fail "center
+order" even when another center is duplicated. So the same error is always reported the same way. The
+checks live in `evaluation/rubric.py`, and every report lists them with what each one needs.
 
 1. cube detected
 2. cube shape
 3. 3×3 grid
 4. plain stickers (no letters or markings; a logo on a center is allowed)
-5. at most six colors (fewer is fine: a color can be entirely on the hidden faces)
-6. standard palette (every visible color is white, yellow, red, orange, green or blue)
-7. standard color pairs (no piece joins white–yellow, red–orange or blue–green)
-8. scrambled
-9. distinct centers
-10. standard center order
-11. possible pieces
-12. unique pieces
-13. solvable
-14. solvable (standard)
+5. single-colored stickers (no sticker split between two clearly different colors; a logo on a
+   center is allowed)
+6. at most six colors (fewer is fine: a color can be entirely on the hidden faces)
+7. standard palette (every visible color is white, yellow, red, orange, green or blue)
+8. standard color pairs (no piece joins white–yellow, red–orange or blue–green)
+9. scrambled
+10. distinct centers
+11. standard center order
+12. possible pieces
+13. unique pieces
+14. solvable
+15. solvable (standard)
 
-The HTML report shows each model's mean score with a 95% CI, plus the share of points earned per
-check. The verdicts (`VALID_STANDARD`, …) are still reported next to the score.
+Where a failed check has a clear culprit, the rubric records it as a *mark*. Marked stickers are
+named by facelet (`U9`, `F2`, ...), and faces that are not 3×3 are marked as a whole. Examples:
+the two centers that share a color, the corner or edge that can't exist, both copies of a
+duplicated piece, the stickers with letters on them, a sticker showing two colors. Which piece counts as "impossible" can depend
+on the color scheme, so the smallest set of culprits is shown, among the schemes that got
+furthest. Twist, flip and parity failures belong to the whole cube and are not marked. Blocked
+checks are not marked either.
+
+The HTML report shows each model's mean validity and rubric score, plus the share of points earned per
+check. The verdicts (`VALID_STANDARD`, …) are still reported next to them.
 
 ## Benchmark file
 
@@ -66,9 +109,10 @@ generated so far. Each run directory holds `run.json`,
 timestamped results:
 - `results-<UTC>.json` holds the raw data.
 - `results-<UTC>.html` is a self-contained report with light and dark themes. It has:
-  - the per-model scores, each with an inline 95% CI strip and an outcome bar;
+  - the per-model scores: mean validity with an inline 95% CI strip, the rubric score and an outcome bar;
   - a points-per-check heatmap;
-  - a gallery of every image with its per-check results and its extraction overlay;
+  - a gallery of every image, most valid first, with the stickers to fix, its per-check results, its extraction overlay and the culprits of
+    failed checks outlined on the image (hover an outline to see why; a checkbox hides them);
   - the failure flags and the list of checks.
 
 Models that reject a `seed` (e.g. OpenAI, FLUX 3 Image) are sent without one. Their samples are

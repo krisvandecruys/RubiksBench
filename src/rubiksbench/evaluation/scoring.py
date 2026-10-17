@@ -1,6 +1,7 @@
 """Aggregate per-image results into per-model scores.
 
-Rates are over successfully generated images; generation failures are counted
+The headline is the mean validity (0-100%, see ``validity``); the rubric
+explains it. Rates are over successfully generated images; generation failures are counted
 separately and inconclusive samples are reported, never folded into valid or
 invalid.
 """
@@ -56,6 +57,8 @@ def score_model(generations: list[dict[str, Any]], evaluations: dict[str, dict[s
         c.id: sum({"pass": 1.0, "inconclusive": 0.5}.get(r["checks"][c.id], 0.0) for r in graded) / len(graded)
         for c in CHECKS
     } if graded else {}
+    validities = [evaluations[g["sample_id"]]["validity"]["score"] for g in ok
+                  if "validity" in evaluations.get(g["sample_id"], {})]
     costs = [g["cost"] for g in generations if g.get("cost") is not None]
     latencies = [g["latency_s"] for g in ok]
     return {
@@ -67,6 +70,8 @@ def score_model(generations: list[dict[str, Any]], evaluations: dict[str, dict[s
         "failed": n - passed,
         "pass_rate": rate(passed),
         "pass_rate_ci95": wilson_interval(passed, n),
+        "validity_mean": sum(validities) / len(validities) if validities else None,
+        "validity_ci95": mean_interval(validities, 0.0, 1.0),
         "rubric_mean": sum(points) / len(points) if points else None,
         "rubric_ci95": mean_interval(points, 0.0, MAX_POINTS),
         "rubric_max": MAX_POINTS,
@@ -94,6 +99,17 @@ def score_run(generations: list[dict[str, Any]], evaluations: dict[str, dict[str
     }
 
 
+def ranked(scores: dict[str, Any]) -> list[str]:
+    """Reference photos first (a calibration line), then by mean validity, then by rubric
+    score; models without any images last."""
+    def key(m: str) -> tuple[bool, bool, float, float, str]:
+        s = scores[m]
+        return (not s.get("reference"), s["validity_mean"] is None, -(s["validity_mean"] or 0),
+                -(s["rubric_mean"] or 0), m)
+
+    return sorted(scores, key=key)
+
+
 def format_table(scores: dict[str, Any]) -> str:
     def pct(x: float | None) -> str:
         return "-" if x is None else f"{100 * x:.0f}%"
@@ -102,20 +118,22 @@ def format_table(scores: dict[str, Any]) -> str:
         return "-" if x is None else f"{x:.1f}"
 
     header: tuple[str, ...] = (
-        "model", "images", "passed", "failed", "gen. errors", "score", "95% CI", "cost"
+        "model", "images", "validity", "95% CI", "passed", "failed", "gen. errors", "rubric", "cost"
     )
     rows = [header]
-    for name, s in sorted(scores.items(), key=lambda kv: (not kv[1].get("reference"), -(kv[1]["rubric_mean"] or -1))):
-        ci = s["rubric_ci95"]
+    for name in ranked(scores):
+        s = scores[name]
+        ci = s["validity_ci95"]
         rows.append(
             (
                 name,
                 str(s["images"]),
+                pct(s["validity_mean"]),
+                "-" if ci is None else f"{pct(ci[0])}-{pct(ci[1])}",
                 f"{s['passed']} ({pct(s['pass_rate'])})",
                 str(s["failed"]),
                 str(s["generation_failures"]),
                 f"{pts(s['rubric_mean'])}/{s['rubric_max']:.0f}",
-                "-" if ci is None else f"{pts(ci[0])}-{pts(ci[1])}",
                 "-" if s["total_cost"] is None else f"${s['total_cost']:.3f}",
             )
         )

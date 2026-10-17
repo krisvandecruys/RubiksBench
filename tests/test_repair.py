@@ -1,0 +1,79 @@
+import random
+
+import pytest
+
+from rubiksbench.cube.facelets import facelet_index
+from rubiksbench.cube.observation import Observation
+from rubiksbench.cube.repair import CHANCE_DISTANCE, chance_distance, repair
+from rubiksbench.evaluation.evaluator import validate
+from rubiksbench.evaluation.validity import validity
+from rubiksbench.vision.extraction import Extraction
+
+from .test_validator import REAL_CUBE, corner_view, scrambled
+
+
+def repaired(observation: Observation) -> Observation:
+    return observation.with_stickers({facelet_index(f["facelet"]): f["color"] for f in
+                                      (fix.to_dict() for fix in repair(observation).fixes)})
+
+
+def test_a_valid_cube_needs_no_repair():
+    result = repair(Observation.from_faces(REAL_CUBE))
+    assert result.distance == 0 and result.fixes == ()
+
+
+def test_a_duplicate_center_is_one_sticker_to_fix():
+    observation = Observation.from_faces(dict(REAL_CUBE, R="ORG WGG OYB"))  # R's center copies U's green
+    result = repair(observation)
+    assert result.distance == 1 and [f.to_dict()["facelet"] for f in result.fixes] in (["U5"], ["R5"])
+
+
+@pytest.mark.parametrize("seed", range(12))
+def test_repair_agrees_with_the_validator(seed):
+    # Recolor a few random stickers of a valid corner view: the distance is 0 exactly when
+    # the validator still finds a standard cube, never more than the stickers changed, and
+    # applying the fixes always gives a valid standard cube.
+    rng = random.Random(seed)
+    observation = corner_view(scrambled(seed))
+    shown = [i for i, s in enumerate(observation.stickers) if s is not None]
+    changed = rng.sample(shown, rng.randint(1, 4))
+    observation = observation.with_stickers({i: rng.choice("WYROGB") for i in changed})
+    distance = repair(observation).distance
+    assert (distance == 0) == validate(observation, with_scramble=False).standard.valid
+    assert distance <= len(changed)
+    assert validate(repaired(observation), with_scramble=False).standard.valid
+
+
+def test_chance_distance_matches_its_constant():
+    assert chance_distance(40, seed=1) == pytest.approx(CHANCE_DISTANCE, abs=0.75)
+
+
+QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "stickers": "pass", "single_color": "pass", "colors": "pass"}
+
+
+def scored(faces, quality=QUALITY, details=None):
+    from rubiksbench.evaluation.rubric import grade
+
+    observation = Observation.from_faces(faces)
+    extraction = Extraction("annotation", observation, details=details or {}, quality=quality)
+    checks = grade(extraction, validate(observation, with_scramble=False).to_dict())["checks"]
+    return validity(extraction, checks)
+
+
+def test_validity_is_full_for_a_valid_cube_and_drops_per_sticker():
+    assert scored(REAL_CUBE)["score"] == 1.0
+    one_off = scored(dict(REAL_CUBE, R="ORG WGG OYB"))
+    assert one_off["repairs"] == 1 and one_off["score"] == pytest.approx(1 - 1 / CHANCE_DISTANCE)
+
+
+def test_sticker_defects_count_as_stickers_to_fix():
+    quality = QUALITY | {"single_color": "fail"}
+    result = scored(REAL_CUBE, quality, {"geometry": {"split": ["F2", "U8"]}})
+    assert result["repairs"] == 0 and result["defects"] == 2
+    assert result["score"] == pytest.approx(1 - 2 / CHANCE_DISTANCE)
+
+
+def test_an_unreadable_or_solved_cube_scores_zero():
+    assert scored(REAL_CUBE, QUALITY | {"grid": "fail"}) == {"score": 0.0, "reason": "not read as a 3x3 cube"}
+    solved = {"U": "G" * 9, "F": "R" * 9, "R": "W" * 9}
+    assert scored(solved)["score"] == 0.0

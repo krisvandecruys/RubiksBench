@@ -247,3 +247,27 @@ def test_full_states_agree_with_kociemba_validity():
         mutated = "".join(s)
         report = validate(full(mutated), with_scramble=False)
         assert report.abstract.valid == kociemba_accepts(mutated), mutated
+
+
+def test_impossible_edge_names_its_stickers():
+    facelets = scrambled(5)
+    u8, f2 = EDGE_FACELETS[1]
+    observation = corner_view(facelets).with_stickers({f2: facelets[u8]})
+    culprits = validate(observation, with_scramble=False).to_dict()["abstract"]["culprits"]
+    assert [c["facelets"] for c in culprits] == [["U8", "F2"]]
+    assert culprits[0]["reason"].startswith("impossible edge UF")
+
+
+def test_duplicated_edge_names_both_copies():
+    facelets = scrambled(11)
+    (uf_u, uf_f), (ur_u, ur_r) = EDGE_FACELETS[1], EDGE_FACELETS[0]
+    observation = corner_view(facelets).with_stickers({ur_u: facelets[uf_u], ur_r: facelets[uf_f]})
+    culprits = validate(observation, with_scramble=False).to_dict()["abstract"]["culprits"]
+    assert sorted(f for c in culprits for f in c["facelets"]) == ["F2", "R2", "U6", "U8"]
+
+
+def test_parity_failure_has_no_single_culprit():
+    facelets = scrambled(9)
+    (a1, a2), (b1, b2) = EDGE_FACELETS[0], EDGE_FACELETS[1]
+    report = validate(full(swap(facelets, (a1, b1), (a2, b2))), with_scramble=False).to_dict()
+    assert report["abstract"]["culprits"] == []

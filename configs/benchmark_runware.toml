@@ -1,9 +1,9 @@
 # Model ids checked against Runware's catalogue on 2026-10-17; ids and prices change, so re-check with `rubiksbench models`.
-backend = "runware"             # needs RUNWARE_API_KEY in .env
-extractor = "vision"            # how stickers are read: "vision", "sam" (needs `uv sync --extra ml`) or "annotation"
-references = "reference_images" # real cube photos scored with every run as a calibration row
+backend = "runware"                                                            # needs RUNWARE_API_KEY in .env
+extractor = "vision"                                                           # how stickers are read: "vision", "sam" (needs `uv sync --extra ml`) or "annotation"
+references = "reference_images"                                                # real cube photos scored with every run as a calibration row
 prompt = "A valid scrambled standard 3x3 Rubik's Cube on a #7f7f7f background"
-iterations = 3                  # images per model, each with a random seed (add `seed = N` for fixed seeds N, N+1, ...)
+iterations = 10                                                                # images per model, each with a random seed (add `seed = N` for fixed seeds N, N+1, ...)
 
 # 7 families x 2 models; find others with `rubiksbench models <name>`.
 [models]

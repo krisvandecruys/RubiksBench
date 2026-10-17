@@ -16,6 +16,7 @@ class Flag(StrEnum):
     GEOMETRY_INVALID = "geometry_invalid"
     WRONG_GRID_SIZE = "wrong_grid_size"
     MARKED_STICKERS = "marked_stickers"
+    SPLIT_STICKERS = "split_stickers"
     VISION_LOW_CONFIDENCE = "vision_low_confidence"
     INSUFFICIENT_VISIBILITY = "insufficient_visibility"
     NO_EXTRACTION = "no_extraction"
@@ -38,3 +39,5 @@ class Flag(StrEnum):
 # Image-level flags that settle the verdict before any cube reasoning.
 GEOMETRY_FAILURES = frozenset({Flag.NOT_A_CUBE, Flag.GEOMETRY_INVALID, Flag.WRONG_GRID_SIZE})
 UNREADABLE = frozenset({Flag.VISION_LOW_CONFIDENCE, Flag.INSUFFICIENT_VISIBILITY, Flag.NO_EXTRACTION})
+# Defects of the stickers themselves: the image is invalid however the colors read.
+STICKER_DEFECTS = frozenset({Flag.MARKED_STICKERS, Flag.SPLIT_STICKERS})

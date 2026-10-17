@@ -1,22 +1,36 @@
 """Graded rubric: one point per check passed, half a point when inconclusive.
 
-Checks are ordered and gated: a check whose prerequisites did not all pass is
-"blocked" and scores 0. A box-shaped cube therefore stops at the 3x3 check
-instead of being tested for solvability.
+Every mistake costs its point once. A check is "blocked" (scoring 0, but not
+counted as a mistake of its own) when it cannot be decided, or when its failure
+would only be a consequence of an earlier failed check:
+
+* sticker checks need the image read as a 3x3 cube (a box-shaped cube stops at
+  the 3x3 check), color checks also need confidently named colors;
+* a duplicate center already rules out the standard center order, a seventh
+  color a standard palette, an impossible piece a solvable cube, and so on.
+
+Independent mistakes still count, whatever failed before: a corner showing one
+color twice fails "possible pieces" even next to two white centers, and opposite
+colors on side-by-side centers fail "center order" even when another center is
+duplicated. So the same kind of error is always reported the same way.
 """
 
 from dataclasses import dataclass
 from itertools import combinations
 from typing import Any
 
-from ..cube.color_scheme import STANDARD_OPPOSITE_COLOR
-from ..cube.constraints import observed_centers, standard_schemes
-from ..cube.facelets import CORNER_FACELETS, CORNER_NAMES, EDGE_FACELETS, EDGE_NAMES, FACES
+from ..cube.color_scheme import STANDARD_OPPOSITE_COLOR, STANDARD_ORIENTATIONS
+from ..cube.constraints import observed_centers, scheme_free_piece_failures
+from ..cube.facelets import (
+    CORNER_FACELETS, CORNER_NAMES, EDGE_FACELETS, EDGE_NAMES, FACES, OPPOSITE_FACE, center_of, facelet_name,
+)
 from ..cube.observation import Observation
 from ..vision.extraction import Extraction
+from .taxonomy import Flag
 
 PASS, FAIL, INCONCLUSIVE, BLOCKED = "pass", "fail", "inconclusive", "blocked"
 POINTS = {PASS: 1.0, INCONCLUSIVE: 0.5, FAIL: 0.0, BLOCKED: 0.0}
+STANDARD = frozenset("WYROGB")
 
 
 @dataclass(frozen=True)
@@ -24,52 +38,47 @@ class Check:
     id: str
     title: str
     description: str
-    requires: tuple[str, ...] = ()
+    # What must have been read for the check to be decided; it is blocked otherwise.
+    needs: str = ""
 
 
+CUBE, COLORS = "the image read as a 3x3 cube", "a 3x3 cube with confidently named colors"
 CHECKS: tuple[Check, ...] = (
     Check("cube_detected", "Cube detected", "A cube-shaped object is found in the image."),
-    Check("cube_shape", "Cube shape", "Three faces form a consistent corner view of a cube.", ("cube_detected",)),
-    Check("grid_3x3", "3x3 grid", "Every visible face has 3 columns and 3 rows of cubies.", ("cube_shape",)),
-    Check(
-        "plain_stickers", "Plain stickers",
-        "Stickers carry no letters or other markings (a logo on a center is allowed).", ("grid_3x3",),
-    ),
-    Check(
-        "six_colors", "At most six colors",
-        "No more than six distinct sticker colors. Fewer is allowed: every sticker of a color can sit on the "
-        "three hidden faces, and the solver checks later that the missing colors really fit there.",
-        ("grid_3x3",),
-    ),
-    Check(
-        "standard_palette", "Standard palette",
-        "Every visible color is white, yellow, red, orange, green or blue.", ("six_colors",),
-    ),
-    Check(
-        "standard_pairs", "Standard color pairs",
-        "No visible corner or edge combines colors that sit on opposite sides of a standard cube "
-        "(white-yellow, red-orange, blue-green).",
-        ("standard_palette",),
-    ),
-    Check("scrambled", "Scrambled", "Not every visible face is a single color.", ("grid_3x3",)),
-    Check("distinct_centers", "Distinct centers", "No two visible centers share a color.", ("six_colors",)),
-    Check(
-        "center_order", "Standard center order",
-        "Centers fit the standard scheme: no opposite colors side by side, correct handedness.",
-        ("standard_palette", "distinct_centers"),
-    ),
-    Check(
-        "possible_pieces", "Possible pieces",
-        "Every visible corner and edge is a real cubie under some color scheme.", ("distinct_centers",),
-    ),
-    Check("unique_pieces", "Unique pieces", "No cubie is needed twice.", ("possible_pieces",)),
-    Check("solvable", "Solvable", "A legal, reachable cube state matches everything visible.", ("unique_pieces",)),
-    Check(
-        "solvable_standard", "Solvable (standard)",
-        "A legal state matches using the standard color scheme.", ("solvable", "standard_pairs", "center_order"),
-    ),
+    Check("cube_shape", "Cube shape", "Three faces form a consistent corner view of a cube.", "a cube outline"),
+    Check("grid_3x3", "3x3 grid", "Every visible face has 3 columns and 3 rows of cubies.", "three faces"),
+    Check("plain_stickers", "Plain stickers",
+          "Stickers carry no letters or other markings (a logo on a center is allowed).", CUBE),
+    Check("single_color", "Single-colored stickers",
+          "No sticker shows two clearly different colors (a logo on a center is allowed; a split between "
+          "neighbouring hues such as red and orange is not detected).", CUBE),
+    Check("six_colors", "At most six colors",
+          "No more than six distinct sticker colors. Fewer is allowed: every sticker of a color can sit on the "
+          "three hidden faces, and the solver checks that the missing colors really fit there.", CUBE),
+    Check("standard_palette", "Standard palette",
+          "Every visible color is white, yellow, red, orange, green or blue.", COLORS),
+    Check("standard_pairs", "Standard color pairs",
+          "No visible corner or edge combines colors that sit on opposite sides of a standard cube "
+          "(white-yellow, red-orange, blue-green).", COLORS),
+    Check("scrambled", "Scrambled", "Not every visible face is a single color.", COLORS),
+    Check("distinct_centers", "Distinct centers", "No two visible centers share a color.", COLORS),
+    Check("center_order", "Standard center order",
+          "Centers fit the standard scheme: standard colors, no opposite colors side by side, correct handedness.",
+          COLORS),
+    Check("possible_pieces", "Possible pieces",
+          "Every visible corner and edge is a real cubie under some color scheme. Without a scheme (e.g. two "
+          "centers share a color) only pieces impossible under every scheme, such as one color twice, are known.",
+          COLORS),
+    Check("unique_pieces", "Unique pieces",
+          "No cubie is needed twice. Decided once every piece is possible, or when two pieces show the same colors.",
+          COLORS),
+    Check("solvable", "Solvable", "A legal, reachable cube state matches everything visible.", COLORS),
+    Check("solvable_standard", "Solvable (standard)",
+          "A legal state matches using the standard color scheme.", COLORS),
 )
 MAX_POINTS = float(len(CHECKS))
+# Until these pass the stickers are not read as a cube, so sticker checks cannot be decided.
+READ_AS_CUBE = ("cube_detected", "cube_shape", "grid_3x3")
 
 
 def _scrambled(observation: Observation) -> str:
@@ -80,58 +89,165 @@ def _scrambled(observation: Observation) -> str:
     return FAIL
 
 
-def _opposite_pairs(observation: Observation) -> list[str]:
-    """Visible pieces that carry two standard-opposite colors, e.g. ["edge UF: R-O"]."""
+def _opposite_pieces(observation: Observation) -> list[tuple[str, list[str]]]:
+    """Visible pieces that carry two standard-opposite colors, as ("edge UF: R-O", ["U8", "F2"])."""
     found = []
     for kind, names, slots in (("corner", CORNER_NAMES, CORNER_FACELETS), ("edge", EDGE_NAMES, EDGE_FACELETS)):
         for name, facelets in zip(names, slots):
-            colors = [observation.stickers[i] for i in facelets if observation.stickers[i] is not None]
-            for a, b in combinations(colors, 2):
-                if STANDARD_OPPOSITE_COLOR.get(a) == b:
-                    found.append(f"{kind} {name}: {a}-{b}")
+            seen = [i for i in facelets if observation.stickers[i] is not None]
+            for a, b in combinations(seen, 2):
+                ca, cb = observation.stickers[a], observation.stickers[b]
+                if STANDARD_OPPOSITE_COLOR.get(ca) == cb:
+                    found.append((f"{kind} {name}: {ca}-{cb}", [facelet_name(a), facelet_name(b)]))
     return found
 
 
-def _outcomes(extraction: Extraction, validation: dict[str, Any] | None) -> dict[str, str]:
-    """Each check's own outcome, before gating."""
-    q = extraction.quality
+def _opposite_pairs(observation: Observation) -> list[str]:
+    """Visible pieces that carry two standard-opposite colors, e.g. ["edge UF: R-O"]."""
+    return [label for label, _ in _opposite_pieces(observation)]
+
+
+def _mark(check: str, label: str, facelets: list[str] = (), faces: list[str] = ()) -> dict[str, Any]:
+    return {"check": check, "label": label, "facelets": list(facelets), "faces": list(faces)}
+
+
+def _center_marks(observation: Observation) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Marks for duplicate centers, and for centers out of the standard order."""
+    centers = observed_centers(observation)
+    duplicates = [
+        _mark("distinct_centers", f"duplicate center: {color}",
+              [facelet_name(center_of(f)) for f in centers if centers[f] == color])
+        for color in sorted(set(centers.values())) if list(centers.values()).count(color) > 1
+    ]
+    order = [
+        _mark("center_order", f"opposite colors {centers[a]}-{centers[b]} on adjacent centers",
+              [facelet_name(center_of(a)), facelet_name(center_of(b))])
+        for a, b in _adjacent_opposite_centers(observation)
+    ] or [_mark("center_order", "centers are a mirror image of the standard scheme",
+                [facelet_name(center_of(f)) for f in centers])]
+    return duplicates, order
+
+
+def marks(extraction: Extraction, validation: dict[str, Any] | None, results: dict[str, str]) -> list[dict[str, Any]]:
+    """What to outline on the image for each failed check: facelets (e.g. "U9") or whole faces.
+
+    Only failed checks are marked, never blocked ones. Failures of the whole cube
+    (twist, flip, parity) have no single culprit and get no mark.
+    """
+    failed = {c for c, r in results.items() if r == FAIL}
+    geometry = extraction.details.get("geometry", {})
+    out = []
+    if "grid_3x3" in failed:
+        out += [_mark("grid_3x3", f"{face}: {cols}x{rows} grid", faces=[face])
+                for face, (cols, rows) in geometry.get("grids", {}).items() if (cols, rows) != (3, 3)]
+    if "plain_stickers" in failed and (marked := geometry.get("marked")):
+        out.append(_mark("plain_stickers", "letters or markings", marked))
+    if "single_color" in failed:
+        out += [_mark("single_color", f"two colors on sticker {name}", [name]) for name in geometry.get("split", [])]
     obs = extraction.observation
-    out = {
-        "cube_detected": q.get("cube", INCONCLUSIVE),
-        "cube_shape": q.get("shape", INCONCLUSIVE),
-        "grid_3x3": q.get("grid", INCONCLUSIVE),
-        "plain_stickers": q.get("stickers", INCONCLUSIVE),
-    }
     if obs is None:
         return out
-    colors_known = q.get("colors") == PASS
-    out["six_colors"] = (FAIL if len(obs.labels) > 6 else PASS) if colors_known else INCONCLUSIVE
-    out["standard_palette"] = PASS if obs.labels <= set("WYROGB") else FAIL
+    if "standard_palette" in failed:
+        odd = [i for i, s in enumerate(obs.stickers) if s is not None and s not in STANDARD]
+        out.append(_mark("standard_palette", "non-standard color", [facelet_name(i) for i in odd]))
+    if "standard_pairs" in failed:
+        out += [_mark("standard_pairs", f"opposite colors on {label}", facelets)
+                for label, facelets in _opposite_pieces(obs)]
+    duplicates, order = _center_marks(obs)
+    if "distinct_centers" in failed:
+        out += duplicates
+    if "center_order" in failed:
+        out += order
+    if validation is not None:
+        culprits = {side: validation[side].get("culprits", []) for side in ("abstract", "standard")}
+        for check, side, kind in (("possible_pieces", "abstract", "impossible"), ("unique_pieces", "abstract", "duplicate"),
+                                  ("solvable_standard", "standard", "")):
+            if check in failed:
+                out += [_mark(check, c["reason"], c["facelets"]) for c in culprits[side] if c["reason"].startswith(kind)]
+        if "unique_pieces" in failed:  # also when an impossible piece stopped the search first
+            out += [_mark("unique_pieces", c.reason, [facelet_name(i) for i in c.facelets])
+                    for flag, c in scheme_free_piece_failures(obs) if flag == Flag.DUPLICATE_PIECE]
+    # One outline per set of stickers: a piece already marked (e.g. for opposite colors)
+    # is not outlined again when it also breaks the standard scheme.
+    seen: set[tuple[frozenset[str], frozenset[str]]] = set()
+    unique = []
+    for m in out:
+        key = (frozenset(m["facelets"]), frozenset(m["faces"]))
+        if key not in seen:
+            seen.add(key)
+            unique.append(m)
+    return unique
+
+
+def _outcomes(extraction: Extraction, validation: dict[str, Any] | None) -> dict[str, str]:
+    """Each check's outcome where it can be decided from what was read; missing means undecidable."""
+    q = extraction.quality
+    obs = extraction.observation
+    out = {k: v for k, v in (("cube_detected", q.get("cube", INCONCLUSIVE)), ("cube_shape", q.get("shape")),
+                             ("grid_3x3", q.get("grid"))) if v is not None}
+    if not all(out.get(c) == PASS for c in READ_AS_CUBE):
+        return out
+    out["plain_stickers"] = q.get("stickers", INCONCLUSIVE)
+    out["single_color"] = q.get("single_color", INCONCLUSIVE)
+    if obs is None:
+        return out
+    if q.get("colors") != PASS:
+        out["six_colors"] = INCONCLUSIVE
+        return out
+    out["six_colors"] = FAIL if len(obs.labels) > 6 else PASS
+    if len(obs.labels) <= 6:  # a seventh color cannot be a standard one: already counted
+        out["standard_palette"] = PASS if obs.labels <= STANDARD else FAIL
     out["standard_pairs"] = FAIL if _opposite_pairs(obs) else PASS
     out["scrambled"] = _scrambled(obs)
-    centers = list(observed_centers(obs).values())
-    out["distinct_centers"] = PASS if len(centers) == len(set(centers)) else FAIL
-    out["center_order"] = PASS if standard_schemes(obs)[0] else FAIL
-    if validation is not None:
-        stage = validation["abstract"]["furthest_stage"]
+    centers = observed_centers(obs)
+    distinct = len(centers) == len(set(centers.values()))
+    out["distinct_centers"] = PASS if distinct else FAIL
+    if distinct and set(centers.values()) <= STANDARD:
+        fits = any(all(s.color(f) == c for f, c in centers.items()) for s in STANDARD_ORIENTATIONS)
+        out["center_order"] = PASS if fits else FAIL
+    elif _adjacent_opposite_centers(obs):
+        # Duplicate or non-standard centers rule the order out anyway; only a separate
+        # mistake, opposite colors side by side, counts against it.
+        out["center_order"] = FAIL
+    if validation is None:
+        return out
+    abstract = validation["abstract"]
+    # Piece failures under every color scheme; they decide the piece checks when the
+    # completion search could not (no scheme fits the centers, or an impossible piece came first).
+    unfixable = {flag for flag, _ in scheme_free_piece_failures(obs)}
+    if abstract["schemes_tried"]:
+        stage = abstract["furthest_stage"]
         out["possible_pieces"] = PASS if stage >= 1 else FAIL
-        out["unique_pieces"] = PASS if stage >= 2 else FAIL
-        out["solvable"] = PASS if stage >= 3 else FAIL
+        if stage >= 1:
+            out["unique_pieces"] = PASS if stage >= 2 else FAIL
+    elif {Flag.IMPOSSIBLE_CORNER, Flag.IMPOSSIBLE_EDGE} & unfixable:
+        out["possible_pieces"] = FAIL
+    if "unique_pieces" not in out and Flag.DUPLICATE_PIECE in unfixable:
+        out["unique_pieces"] = FAIL
+    # Unsolvable is only a mistake of its own (twist, flip, parity) once every piece is
+    # possible and unique; otherwise it follows from the piece or center failures.
+    if out.get("unique_pieces") == PASS:
+        out["solvable"] = PASS if abstract["valid"] else FAIL
+    if all(out.get(c) == PASS for c in ("solvable", "standard_palette", "standard_pairs", "center_order")):
         out["solvable_standard"] = PASS if validation["standard"]["valid"] else FAIL
     return out
+
+
+def _adjacent_opposite_centers(observation: Observation) -> list[tuple[str, str]]:
+    """Pairs of neighbouring faces whose centers carry standard-opposite colors."""
+    centers = observed_centers(observation)
+    return [(a, b) for a, b in combinations(centers, 2)
+            if OPPOSITE_FACE[a] != b and STANDARD_OPPOSITE_COLOR.get(centers[a]) == centers[b]]
 
 
 def grade(extraction: Extraction, validation: dict[str, Any] | None) -> dict[str, Any]:
     """Per-check results and total points for one image."""
     outcomes = _outcomes(extraction, validation)
-    results: dict[str, str] = {}
-    for check in CHECKS:
-        if any(results.get(r) != PASS for r in check.requires):
-            results[check.id] = BLOCKED
-        else:
-            results[check.id] = outcomes.get(check.id, INCONCLUSIVE)
+    results = {check.id: outcomes.get(check.id, BLOCKED) for check in CHECKS}
     points = sum(POINTS[r] for r in results.values())
     graded: dict[str, Any] = {"checks": results, "points": points, "max_points": MAX_POINTS}
+    if found := marks(extraction, validation, results):
+        graded["marks"] = found
     if (obs := extraction.observation) is not None:
         graded["visible_colors"] = len(obs.labels)
         # Standard colors not seen at all: legal only if they all fit on the hidden faces.

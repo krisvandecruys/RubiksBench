@@ -16,6 +16,8 @@ from typing import Any
 
 from .. import EVALUATOR_VERSION
 from .rubric import CHECKS, MAX_POINTS
+from .scoring import ranked
+from ..cube.repair import CHANCE_DISTANCE
 from .taxonomy import Verdict
 
 # Outcome colors (dataviz reference palette, validated as an adjacent set in this order).
@@ -47,13 +49,7 @@ def _pct(x: float | None) -> str:
 
 
 def _ranked(scores: dict[str, Any]) -> list[str]:
-    # Reference photos first (a calibration line), then best rubric score first;
-    # models without any images last.
-    def key(m: str) -> tuple[bool, bool, float, str]:
-        mean = scores[m]["rubric_mean"]
-        return not scores[m].get("reference"), mean is None, -(mean or 0), m
-
-    return sorted(scores, key=key)
+    return ranked(scores)
 
 
 def _outcome_counts(s: dict[str, Any]) -> list[int]:
@@ -65,40 +61,50 @@ def _outcome_counts(s: dict[str, Any]) -> list[int]:
 STRIP_W, STRIP_H, PAD = 200, 26, 8
 
 
-def _x(points: float) -> float:
-    return PAD + (STRIP_W - 2 * PAD) * points / MAX_POINTS
+def _x(value: float, maximum: float) -> float:
+    return PAD + (STRIP_W - 2 * PAD) * value / maximum
 
 
-def _score_axis() -> str:
-    ticks = "".join(
-        f'<line x1="{_x(t):.1f}" x2="{_x(t):.1f}" y1="14" y2="18" class="axis"/>'
-        f'<text x="{_x(t):.1f}" y="11" class="tick">{t}</text>'
-        for t in range(0, int(MAX_POINTS) + 1, 3)
+# Validity is a share (0-1), shown as percent; ticks every 25%.
+VALIDITY_TICKS = [(v / 4, f"{25 * v}") for v in range(5)]
+
+
+def _axis(maximum: float, ticks: list[tuple[float, str]]) -> str:
+    marks = "".join(
+        f'<line x1="{_x(v, maximum):.1f}" x2="{_x(v, maximum):.1f}" y1="14" y2="18" class="axis"/>'
+        f'<text x="{_x(v, maximum):.1f}" y="11" class="tick">{label}</text>'
+        for v, label in ticks
     )
     return (
         f'<svg class="strip" width="{STRIP_W}" height="20" viewBox="0 0 {STRIP_W} 20" aria-hidden="true">'
-        f'<line x1="{_x(0)}" x2="{_x(MAX_POINTS)}" y1="18" y2="18" class="axis"/>{ticks}</svg>'
+        f'<line x1="{_x(0, maximum)}" x2="{_x(maximum, maximum)}" y1="18" y2="18" class="axis"/>{marks}</svg>'
     )
 
 
-def _score_strip(s: dict[str, Any]) -> str:
-    if s["rubric_mean"] is None:
+def _strip(mean: float | None, ci: list[float] | None, maximum: float, ticks: list[tuple[float, str]],
+           label: str) -> str:
+    """A mean as a dot on a 0..maximum scale, with its 95% interval as a line."""
+    if mean is None:
         return '<span class="muted">no images</span>'
-    mean, ci = s["rubric_mean"], s["rubric_ci95"]
     grid = "".join(
-        f'<line x1="{_x(t):.1f}" x2="{_x(t):.1f}" y1="3" y2="{STRIP_H - 3}" class="grid"/>'
-        for t in range(0, int(MAX_POINTS) + 1, 3)
+        f'<line x1="{_x(v, maximum):.1f}" x2="{_x(v, maximum):.1f}" y1="3" y2="{STRIP_H - 3}" class="grid"/>'
+        for v, _ in ticks
     )
     interval = (
-        f'<line x1="{_x(ci[0]):.1f}" x2="{_x(ci[1]):.1f}" y1="{STRIP_H / 2}" y2="{STRIP_H / 2}" class="ci"/>'
-        if ci else ""
+        f'<line x1="{_x(ci[0], maximum):.1f}" x2="{_x(ci[1], maximum):.1f}" y1="{STRIP_H / 2}" '
+        f'y2="{STRIP_H / 2}" class="ci"/>' if ci else ""
     )
-    label = f"{mean:.1f} of {MAX_POINTS:.0f}" + (f", 95% CI {ci[0]:.1f}–{ci[1]:.1f}" if ci else "")
     return (
         f'<svg class="strip" width="{STRIP_W}" height="{STRIP_H}" viewBox="0 0 {STRIP_W} {STRIP_H}" role="img" '
         f'aria-label="{escape(label)}"><title>{escape(label)}</title>{grid}{interval}'
-        f'<circle cx="{_x(mean):.1f}" cy="{STRIP_H / 2}" r="5" class="dot"/></svg>'
+        f'<circle cx="{_x(mean, maximum):.1f}" cy="{STRIP_H / 2}" r="5" class="dot"/></svg>'
     )
+
+
+def _validity_strip(s: dict[str, Any]) -> str:
+    mean, ci = s["validity_mean"], s["validity_ci95"]
+    label = "" if mean is None else f"validity {_pct(mean)}" + (f", 95% CI {_pct(ci[0])}–{_pct(ci[1])}" if ci else "")
+    return _strip(mean, ci, 1.0, VALIDITY_TICKS, label)
 
 
 def _outcome_bar(s: dict[str, Any]) -> str:
@@ -144,7 +150,7 @@ CSS = """
   --page:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781; --grid:#e1e0d9;
   --axis:#c3c2b7; --border:rgba(11,11,11,.10); --series:#2a78d6;
   --outcome-1:#1baf7a; --outcome-2:#2a78d6; --outcome-3:#e34948; --outcome-4:#eda100; --outcome-5:#6250d6;
-  --status-good:#0ca30c; --status-warning:#fab219; --status-critical:#d03b3b; --blocked:#e1e0d9; LIGHT_HEAT }
+  --mark:#ff2bd6; --status-good:#0ca30c; --status-warning:#fab219; --status-critical:#d03b3b; --blocked:#e1e0d9; LIGHT_HEAT }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { DARK } }
 :root[data-theme="dark"] { DARK }
 * { box-sizing: border-box; }
@@ -173,6 +179,15 @@ HEAT_CLASSES
 .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
 .sample { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .sample img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; background: var(--grid); }
+.frame { position: relative; display: block; }
+.frame svg.marks { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+svg.marks polygon { fill: transparent; stroke-linejoin: round; vector-effect: non-scaling-stroke; pointer-events: all; }
+svg.marks .halo { stroke: rgba(0,0,0,.75); stroke-width: 5; }
+svg.marks .line { stroke: var(--mark); stroke-width: 2.5; }
+svg.marks g:hover .line { stroke-width: 4; }
+#show-marks:not(:checked) ~ .gallery svg.marks { display: none; }
+.sample ul.marks { margin: 4px 0 0; padding-left: 16px; color: var(--ink); }
+.sample .repairs { margin-top: 4px; color: var(--ink); }
 .sample .body { padding: 8px 10px 10px; font-size: 12px; color: var(--ink-2); }
 .sample .head { display: flex; justify-content: space-between; color: var(--ink); font-weight: 600; font-size: 13px; }
 .sample svg.checks { display: block; margin: 6px 0; }
@@ -206,26 +221,35 @@ def _scores_section(scores: dict[str, Any]) -> str:
     rows = []
     for model in _ranked(scores):
         s = scores[model]
-        ci = s["rubric_ci95"]
-        mean = "–" if s["rubric_mean"] is None else f"{s['rubric_mean']:.1f}"
+        ci = s["validity_ci95"]
+        rubric_ci = s["rubric_ci95"]
+        rubric = "–" if s["rubric_mean"] is None else f"{s['rubric_mean']:.1f}"
+        rubric_title = "" if rubric_ci is None else f" title='95% CI {rubric_ci[0]:.1f}–{rubric_ci[1]:.1f}'"
         cost = "–" if s["total_cost"] is None else f"${s['total_cost']:.3f}"
         latency = "–" if s["mean_latency_s"] is None else f"{s['mean_latency_s']:.1f}s"
         rows.append(
             f"<tr{' class=reference' if s.get('reference') else ''}><td>{escape(model)}"
             + (" <span class='badge'>reference</span>" if s.get("reference") else "")
             + f"<div class='muted'><code>{escape(s['model'])}</code></div></td>"
-            f"<td><b>{mean}</b></td><td>{'–' if ci is None else f'{ci[0]:.1f}–{ci[1]:.1f}'}</td>"
-            f"<td>{_score_strip(s)}</td><td>{s['images']}</td>"
+            f"<td><b>{_pct(s['validity_mean'])}</b></td><td>{'–' if ci is None else f'{_pct(ci[0])}–{_pct(ci[1])}'}</td>"
+            f"<td>{_validity_strip(s)}</td><td{rubric_title}>{rubric}<span class='muted'>/{MAX_POINTS:.0f}</span></td>"
+            f"<td>{s['images']}</td>"
             f"<td><b>{s['passed']}</b> <span class='muted'>({_pct(s['pass_rate'])})</span></td><td>{s['failed']}</td>"
             f"<td>{s['generation_failures']}</td><td>{_outcome_bar(s)}</td><td>{cost}</td><td>{latency}</td></tr>"
         )
     return (
-        f"<h2>Scores</h2><p>Each image earns up to {MAX_POINTS:.0f} points: 1 per check passed, ½ when "
-        "inconclusive, 0 when failed or blocked by an earlier check (see <a href='#checks'>Checks</a>). "
-        "An image <b>passes</b> only if it passes all checks. Scores are over generated images; requests that "
-        "returned no image are counted separately as generation errors.</p>"
-        "<div class='card'><table><thead><tr><th>Model</th><th>Score</th><th>95% CI</th>"
-        f"<th>{_score_axis()}</th><th>Images</th>"
+        "<h2>Scores</h2><p><b>Validity</b> says how close an image comes to a valid, scrambled, standard 3x3 "
+        "cube: the fewest stickers you would have to recolor to get one (plus any sticker no recoloring fixes, "
+        "such as one with letters or two colors), compared with random colors. 100% is a valid cube, 0% is no "
+        "better than coloring the stickers at random (which needs about "
+        f"{CHANCE_DISTANCE:.1f} recolorings, because the three hidden faces leave a lot of freedom). An image "
+        "that is not read as a 3x3 cube scores 0%.</p>"
+        f"<p>The <b>rubric</b> explains what is wrong: up to {MAX_POINTS:.0f} points, 1 per check passed, ½ when "
+        "inconclusive, 0 when failed or blocked (see <a href='#checks'>Checks</a>). An image <b>passes</b> only "
+        "if it passes all checks. Scores are over generated images; requests that returned no image are counted "
+        "separately as generation errors.</p>"
+        "<div class='card'><table><thead><tr><th>Model</th><th>Validity</th><th>95% CI</th>"
+        f"<th>{_axis(1.0, VALIDITY_TICKS)}</th><th>Rubric</th><th>Images</th>"
         f"<th title='Images passing all {MAX_POINTS:.0f} checks'>Passed</th>"
         "<th title='Images missing at least one check'>Failed</th>"
         "<th title='Requests that returned no image (API or model errors)'>Gen. errors</th>"
@@ -255,22 +279,21 @@ def _heatmap_section(scores: dict[str, Any]) -> str:
         rows.append(f"<tr><td>{escape(model)}</td>{''.join(cells)}</tr>")
     return (
         "<h2>Points per check</h2><p>Share of the available points each model earned on each check. "
-        "Checks unlock left to right: a check whose prerequisites did not pass scores 0.</p>"
+        "A check that cannot be decided (e.g. sticker colors on a face that is not 3x3) is blocked and scores 0.</p>"
         f"<div class='card heat'><table><thead><tr><th>Model</th>{head}</tr></thead><tbody>"
         + "".join(rows) + "</tbody></table></div>"
     )
 
 
 def _checks_section() -> str:
-    titles = {c.id: c.title for c in CHECKS}
     rows = "".join(
         f"<tr><td>{i}</td><td class='wrap'>{escape(c.title)}</td><td class='wrap'>{escape(c.description)}</td>"
-        f"<td class='wrap'>{escape(', '.join(titles[r] for r in c.requires)) or '–'}</td></tr>"
+        f"<td class='wrap'>{escape(c.needs) or '–'}</td></tr>"
         for i, c in enumerate(CHECKS, 1)
     )
     return (
         "<h2 id='checks'>Checks</h2><div class='card'><table><thead><tr><th>#</th><th class='wrap'>Check</th>"
-        "<th class='wrap'>Passes when</th><th class='wrap'>Requires</th></tr></thead>"
+        "<th class='wrap'>Passes when</th><th class='wrap'>Decided when read</th></tr></thead>"
         f"<tbody>{rows}</tbody></table></div>"
     )
 
@@ -297,13 +320,48 @@ def _details_section(scores: dict[str, Any]) -> str:
 
 
 def _gallery_order(samples: list[dict[str, Any]], scores: dict[str, Any]) -> list[dict[str, Any]]:
-    """Highest score first across all models; ties by leaderboard rank, failed generations last."""
+    """Most valid first across all models, then by rubric points; ties by leaderboard rank,
+    failed generations last."""
     rank = {model: i for i, model in enumerate(_ranked(scores))}
-    return sorted(
-        samples,
-        key=lambda s: (-(s["points"] if s["points"] is not None else -1), rank.get(s["model_name"], len(rank)),
-                       s["iteration"]),
-    )
+
+    def key(s: dict[str, Any]) -> tuple[float, float, int, int]:
+        validity = (s.get("validity") or {}).get("score")
+        return (-(validity if validity is not None else -1), -(s["points"] if s["points"] is not None else -1),
+                rank.get(s["model_name"], len(rank)), s["iteration"])
+
+    return sorted(samples, key=key)
+
+
+def _repairs(validity: dict[str, Any] | None) -> str:
+    """One line on how far the image is from a valid cube, e.g. "2 stickers to fix: U5 R→G, F3 B→G"."""
+    if not validity:
+        return ""
+    if "repairs" not in validity:
+        return f"<div class='repairs'>{escape(validity['reason'])}</div>"
+    parts = [f"{f['facelet']} {f['seen']}→{f['color']}" for f in validity["fixes"]]
+    parts += [f"{name} (sticker defect)" for name in validity["defective"]]
+    count = len(parts)
+    if not count:
+        return "<div class='repairs'>valid: nothing to fix</div>"
+    noun = "sticker" if count == 1 else "stickers"
+    title = "Recoloring these stickers gives the nearest valid standard cube (one of them, when several tie)"
+    return f"<div class='repairs' title='{title}'>{count} {noun} to fix: {escape(', '.join(parts))}</div>"
+
+
+def _marks_svg(s: dict[str, Any]) -> str:
+    """Outlines of the stickers or faces behind each failed check, over the image (hover for why)."""
+    if not (marks := [m for m in s.get("marks") or [] if m["polygons"]]):
+        return ""
+    width, height = s["image_size"]
+    groups = []
+    for m in marks:
+        points = [" ".join(f"{x:g},{y:g}" for x, y in poly) for poly in m["polygons"]]
+        halo = "".join(f"<polygon class='halo' points='{p}'/>" for p in points)
+        line = "".join(f"<polygon class='line' points='{p}'/>" for p in points)
+        groups.append(f"<g><title>{escape(m['label'])}</title>{halo}{line}</g>")
+    # "slice" matches the image's object-fit: cover, so outlines stay on their stickers.
+    return (f"<svg class='marks' viewBox='0 0 {width} {height}' preserveAspectRatio='xMidYMid slice'>"
+            f"{''.join(groups)}</svg>")
 
 
 def _samples_section(samples: list[dict[str, Any]], scores: dict[str, Any]) -> str:
@@ -311,7 +369,8 @@ def _samples_section(samples: list[dict[str, Any]], scores: dict[str, Any]) -> s
     for s in _gallery_order(samples, scores):
         if s["image_path"]:
             src = escape(s["image_path"])
-            image = f"<a href='{src}'><img loading='lazy' src='{src}' alt='{escape(s['sample_id'])}'></a>"
+            image = (f"<a class='frame' href='{src}'><img loading='lazy' src='{src}' alt='{escape(s['sample_id'])}'>"
+                     f"{_marks_svg(s)}</a>")
         else:
             image = f"<div class='noimg'>{escape(s.get('error') or 'no image')}</div>"
         if s.get("reference"):
@@ -322,16 +381,25 @@ def _samples_section(samples: list[dict[str, Any]], scores: dict[str, Any]) -> s
             seed += " · <span title='Generated after the run, when the original request failed'>backfilled</span>"
         overlay = f" · <a href='{escape(s['overlay_path'])}'>extraction</a>" if s.get("overlay_path") else ""
         points = "–" if s["points"] is None else f"{s['points']:g}/{MAX_POINTS:.0f}"
+        validity = s.get("validity")
+        headline = points if validity is None else f"{_pct(validity['score'])} · {points}"
         flags = ", ".join(escape(f) for f in s["flags"]) or "–"
+        problems = "".join(f"<li>{escape(m['label'])}</li>" for m in s.get("marks") or [])
+        problems = f"<ul class='marks'>{problems}</ul>" if problems else ""
         cards.append(
             f"<div class='sample'>{image}<div class='body'><div class='head'><span>{escape(s['model_name'])} "
-            f"#{s['iteration']}</span><span>{points}</span></div>{_check_strip(s.get('checks'))}"
-            f"<div>{escape(s['verdict'])} · {seed}{overlay}</div><div class='flags muted'>{flags}</div></div></div>"
+            f"#{s['iteration']}</span><span>{headline}</span></div>{_check_strip(s.get('checks'))}"
+            f"<div>{escape(s['verdict'])} · {seed}{overlay}</div>{_repairs(validity)}{problems}"
+            f"<div class='flags muted'>{flags}</div></div></div>"
         )
-    legend = _legend([(label, token) for label, token in CHECK_RESULTS.values()])
+    legend = _legend([(label, token) for label, token in CHECK_RESULTS.values()] + [("problem outline", "--mark")])
     return (
-        f"<h2>Samples</h2><p>Every attempted image, highest score first. The squares are the {len(CHECKS)} checks in order; "
-        "hover for names.</p>"
+        f"<h2>Samples</h2><p>Every attempted image, most valid first. Each card shows its validity and rubric "
+        "points, and which stickers to recolor for the nearest valid cube. The squares are the "
+        f"{len(CHECKS)} checks in order; hover for names. Where a failed check has a clear culprit (a duplicate center, an impossible piece, a "
+        "face that is not 3x3, ...) it is outlined on the image and listed below it. Twist, flip and parity "
+        "failures belong to the whole cube, so they are not outlined.</p>"
+        "<input type='checkbox' id='show-marks' checked> <label for='show-marks'>Show problem outlines</label>"
         f"{legend}<div class='gallery'>{''.join(cards)}</div>"
     )
 
@@ -356,6 +424,22 @@ def render_html(stamp: str, run: dict[str, Any], scores: dict[str, Any], samples
         + _details_section(scores) + _checks_section()
         + "</main></body></html>\n"
     )
+
+
+def _sample_marks(evaluation: dict[str, Any]) -> dict[str, Any]:
+    """The rubric's marks with their outlines in image pixels (empty when nothing is marked)."""
+    geometry = evaluation.get("extraction_details", {}).get("geometry")
+    marks = evaluation.get("rubric", {}).get("marks")
+    if not geometry or not marks:
+        return {"marks": marks or []}
+    return {
+        "image_size": geometry["size"],
+        "marks": [
+            m | {"polygons": [geometry["stickers"][f] for f in m["facelets"] if f in geometry["stickers"]]
+                 + [geometry["faces"][f] for f in m["faces"] if f in geometry["faces"]]}
+            for m in marks
+        ],
+    }
 
 
 def write_results(
@@ -383,7 +467,9 @@ def write_results(
                 "extractor": e.get("extractor"),
                 "points": e.get("rubric", {}).get("points"),
                 "checks": e.get("rubric", {}).get("checks"),
+                "validity": e.get("validity"),
                 "reference": bool(g.get("reference")),
+                **_sample_marks(e),
                 "overlay_path": (
                     str(Path(g["image_path"]).parent / o)
                     if g.get("image_path") and (o := e.get("extraction_details", {}).get("overlay")) else None
