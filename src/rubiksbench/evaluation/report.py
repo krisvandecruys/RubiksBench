@@ -58,7 +58,7 @@ def _outcome_counts(s: dict[str, Any]) -> list[int]:
 
 # ----------------------------------------------------------------------------- inline SVG
 
-STRIP_W, STRIP_H, PAD = 200, 26, 8
+STRIP_W, STRIP_H, PAD = 200, 26, 12
 
 
 def _x(value: float, maximum: float) -> float:
