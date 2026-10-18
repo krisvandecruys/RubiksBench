@@ -12,9 +12,10 @@ from typing import Any
 import cv2
 import numpy as np
 
+from ..cube.facelets import FACES
 from ..cube.observation import Observation
 from ..evaluation.taxonomy import Flag
-from .color_classifier import StickerColor, classify
+from .color_classifier import StickerColor, classify, off_shade
 from .cube_detector import CubeDetector, FaceLayout
 from .extraction import FAIL, INCONCLUSIVE, PASS, Extraction, Extractor, geometry
 from . import recognizer
@@ -46,8 +47,9 @@ class AnnotationExtractor:
         shape = FAIL if Flag.GEOMETRY_INVALID in flags else PASS
         stickers = FAIL if Flag.MARKED_STICKERS in flags else PASS
         single = FAIL if Flag.SPLIT_STICKERS in flags else PASS
+        shades = FAIL if Flag.OFF_SHADE_STICKERS in flags else PASS
         quality = {"cube": PASS, "shape": shape, "grid": grid, "stickers": stickers, "single_color": single,
-                   "colors": PASS}
+                   "shades": shades, "colors": PASS}
         return Extraction(self.name, observation, 1.0, flags, {"annotation": path.name}, quality)
 
 
@@ -64,6 +66,18 @@ class VisionExtractor:
     name = "vision"
     # Smallest hue/chroma margin accepted for a sticker's color (see color_classifier).
     min_color_margin = 0.5
+    # Up to this many stickers below that margin are kept with both possible colors (the
+    # evaluator decides what holds either way); more make the colors inconclusive.
+    max_uncertain_stickers = 4
+    # A face that does not read as 3x3 while this much blurrier than the cube's sharpest face
+    # (Laplacian variance of the flattened face) cannot have its rows counted: a thin, out of
+    # focus face at a shallow angle. When the other faces are 3x3 it is read as 3x3 like
+    # them, since a cube's faces share their grid. (Ideogram 4.5's blurred top face, misread
+    # as 2x3: 0.05; genuine non-3x3 faces: 0.24 up.)
+    min_face_sharpness = 0.15
+    # On such a face, a cell this mixed (share of a clearly different second color) straddles
+    # two stickers, so it is left unknown rather than guessed.
+    mixed_cell = 0.15
     # A face whose rows or columns clearly (by this factor over the runner-up) are not
     # 3 makes the cube INVALID; a weaker reading only makes it INCONCLUSIVE. Genuine
     # 3x3 faces have so far always read 3 on both axes.
@@ -123,7 +137,8 @@ class VisionExtractor:
         clean = layout.hexagon_fit >= self.min_hexagon_fit
         # Without CLIP, a clean cube silhouette is the evidence that a cube is there at all.
         cube = recognized or (PASS if clean else INCONCLUSIVE)
-        quality = {"cube": cube, "shape": PASS, "grid": PASS, "stickers": PASS, "single_color": PASS, "colors": PASS}
+        quality = {"cube": cube, "shape": PASS, "grid": PASS, "stickers": PASS, "single_color": PASS, "shades": PASS,
+                   "colors": PASS}
         if cube != PASS:
             flags.append(Flag.VISION_LOW_CONFIDENCE)
         if layout.inner_spread > self.max_inner_spread or not clean:
@@ -132,13 +147,23 @@ class VisionExtractor:
         faces: dict[str, list[str]] = {}
         colors: dict[str, list[StickerColor]] = {}
         grids: dict[str, tuple[int, int]] = {}
-        for face, quad in layout.quads.items():
-            grid = read_face(image, quad)
+        flattened = {face: read_face(image, quad) for face, quad in layout.quads.items()}
+        sharpness = {face: sharpness_of(grid.image) for face, grid in flattened.items()}
+        for face, grid in flattened.items():
+            relative = sharpness[face] / (max(sharpness.values()) or 1.0)
+            inferred = (grid.columns, grid.rows) != (3, 3) and relative < self.min_face_sharpness
+            if inferred and not all((g.columns, g.rows) == (3, 3) for f, g in flattened.items() if f != face):
+                details["faces"][face] = {
+                    "skipped": f"too blurred to count its rows ({relative:.0%} of the sharpest face's detail)"}
+                continue
             colors[face] = [classify(rgb) for rgb in grid.rgb]
-            faces[face] = [c.label for c in colors[face]]
-            grids[face] = (grid.columns, grid.rows)
+            faces[face] = [
+                "." if inferred and mixed > self.mixed_cell else c.label
+                for c, mixed in zip(colors[face], grid.second_color)
+            ]
+            grids[face] = (3, 3) if inferred else (grid.columns, grid.rows)
             for count, dominance in ((grid.columns, grid.column_dominance), (grid.rows, grid.row_dominance)):
-                if count != 3:
+                if count != 3 and not inferred:
                     strong = dominance >= self.min_grid_dominance
                     flags.append(Flag.WRONG_GRID_SIZE if strong else Flag.VISION_LOW_CONFIDENCE)
                     if quality["grid"] != FAIL:
@@ -150,43 +175,65 @@ class VisionExtractor:
                 "row_dominance": round(grid.row_dominance, 2),
                 "marking": [round(m, 3) for m in grid.marking],
                 "second_color": [round(s, 3) for s in grid.second_color],
+                **({"inferred_grid": f"too blurred to count its rows ({relative:.0%} of the sharpest face's "
+                    f"detail; measured {grid.columns}x{grid.rows}), read as 3x3 like the other faces"}
+                   if inferred else {}),
                 "stickers": [
                     {"label": c.label, "margin": round(c.margin, 2), "rgb": [round(v) for v in rgb],
                      "hue": round(c.hue, 1), "chroma": round(c.chroma, 1)}
                     for c, rgb in zip(colors[face], grid.rgb)
                 ],
             }
-        marked = sum(
-            m > self.marked_sticker for f in details["faces"].values() for i, m in enumerate(f["marking"]) if i != 4
-        )
+        # Letters, split stickers and shades are judged on sharp faces only.
+        read = {face: d for face, d in details["faces"].items() if "skipped" not in d and "inferred_grid" not in d}
+        marked = sum(m > self.marked_sticker for f in read.values() for i, m in enumerate(f["marking"]) if i != 4)
         details["marked_stickers"] = marked
         details["geometry"] = geometry(
             (image.shape[1], image.shape[0]), layout.quads,
             {f"{face}{i + 1}": cell for face, cells in sticker_quads(layout, grids).items() for i, cell in enumerate(cells)},
             grids,
-            [f"{face}{i + 1}" for face, d in details["faces"].items() for i, m in enumerate(d["marking"])
+            [f"{face}{i + 1}" for face, d in read.items() for i, m in enumerate(d["marking"])
              if i != 4 and m > self.marked_sticker],
             # Centers are left out: they may carry a colored brand logo.
-            split := [f"{face}{i + 1}" for face, d in details["faces"].items() if grids[face] == (3, 3)
+            split := [f"{face}{i + 1}" for face, d in read.items() if grids[face] == (3, 3)
                       for i, s in enumerate(d["second_color"]) if i != 4 and s > self.split_sticker],
+            shades := [f"{face}{i + 1}" for face, face_colors in colors.items() if face in read
+                       and grids[face] == (3, 3) for i in off_shade(face_colors, self.min_color_margin)],
         )
+        if shades:
+            flags.append(Flag.OFF_SHADE_STICKERS)
+            quality["shades"] = FAIL
         if split:
             flags.append(Flag.SPLIT_STICKERS)
             quality["single_color"] = FAIL
         if marked >= self.min_marked_stickers:
             flags.append(Flag.MARKED_STICKERS)
             quality["stickers"] = FAIL
-        min_margin = min(c.margin for face_colors in colors.values() for c in face_colors)
-        if min_margin < self.min_color_margin:
+        known = {9 * FACES.index(face) + i: c for face, face_colors in colors.items()
+                 for i, c in enumerate(face_colors) if faces[face][i] != "."}
+        min_margin = min(c.margin for c in known.values())
+        uncertain = {i: c for i, c in known.items() if c.margin < self.min_color_margin}
+        alternatives: dict[int, str] = {}
+        if len(uncertain) > self.max_uncertain_stickers:
             flags.append(Flag.VISION_LOW_CONFIDENCE)
             quality["colors"] = INCONCLUSIVE
+        else:
+            alternatives = {i: c.alternative for i, c in uncertain.items()}
+            details["uncertain_stickers"] = {
+                f"{FACES[i // 9]}{i % 9 + 1}": [c.label, c.alternative] for i, c in uncertain.items()
+            }
 
         if self.write_overlay:
             overlay_path = image_path.with_suffix(".extraction.jpg")
             cv2.imwrite(str(overlay_path), draw_overlay(image, layout, faces, grids))
             details["overlay"] = overlay_path.name
         observation = Observation.from_faces(faces)
-        return Extraction(self.name, observation, min_margin, sorted(set(flags)), details, quality)
+        return Extraction(self.name, observation, min_margin, sorted(set(flags)), details, quality, alternatives)
+
+
+def sharpness_of(face_bgr: np.ndarray) -> float:
+    """Detail in a flattened face: variance of its Laplacian (low for blur or a stretched sliver)."""
+    return float(cv2.Laplacian(cv2.cvtColor(face_bgr, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var())
 
 
 def sticker_quads(layout: FaceLayout, grids: dict[str, tuple[int, int]]) -> dict[str, np.ndarray]:
@@ -195,7 +242,7 @@ def sticker_quads(layout: FaceLayout, grids: dict[str, tuple[int, int]]) -> dict
     unit = np.float32([[[c, r], [c + 1, r], [c + 1, r + 1], [c, r + 1]] for r in range(3) for c in range(3)]) / 3
     out = {}
     for face, quad in layout.quads.items():
-        if grids[face] == (3, 3):
+        if grids.get(face) == (3, 3):
             back = cv2.getPerspectiveTransform(target, np.float32(quad))
             out[face] = cv2.perspectiveTransform(unit.reshape(-1, 1, 2), back).reshape(9, 4, 2)
     return out
@@ -215,6 +262,8 @@ def draw_overlay(
     centres = np.float32([[(c + 0.5) * SIZE / 3, (r + 0.5) * SIZE / 3] for r in range(3) for c in range(3)])
     scale = max(image.shape[:2]) / 1024
     for face, quad in layout.quads.items():
+        if face not in grids:  # left unread (seen edge-on)
+            continue
         back = cv2.getPerspectiveTransform(target, np.float32(quad))
         points = cv2.perspectiveTransform(centres.reshape(-1, 1, 2), back).reshape(-1, 2)
         if grids[face] != (3, 3):

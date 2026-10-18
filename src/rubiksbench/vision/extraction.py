@@ -23,6 +23,9 @@ class Extraction:
     # What the extractor established about the image, per aspect ("cube", "shape",
     # "grid", "colors"): "pass", "fail" or "inconclusive". Feeds the rubric.
     quality: dict[str, str] = field(default_factory=dict)
+    # Stickers whose color call was close: facelet index -> the color on the other side of
+    # the boundary. The evaluator decides only what holds for either reading.
+    alternatives: dict[int, str] = field(default_factory=dict)
 
 
 def geometry(
@@ -32,13 +35,14 @@ def geometry(
     grids: dict[str, tuple[int, int]],
     marked: list[str],
     split: list[str],
+    off_shade: list[str] = (),
 ) -> dict[str, Any]:
     """Where things are in the image, so a report can outline them (``details["geometry"]``).
 
     ``size`` is (width, height); ``faces`` maps a face to its outline and ``stickers`` a
     facelet name ("U1") to its quad, both as [[x, y], ...] in pixels; ``grids`` is each
     face's measured (columns, rows); ``marked`` names the stickers carrying letters and
-    ``split`` those showing two colors.
+    ``split`` those showing two colors, ``off_shade`` those in a second shade of their color.
     """
     def points(quad: Any) -> list[list[float]]:
         return [[round(float(x), 1), round(float(y), 1)] for x, y in quad]
@@ -50,6 +54,7 @@ def geometry(
         "grids": {f: list(g) for f, g in grids.items()},
         "marked": marked,
         "split": split,
+        "off_shade": list(off_shade),
     }
 
 

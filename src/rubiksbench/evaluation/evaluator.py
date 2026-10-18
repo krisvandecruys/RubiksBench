@@ -1,6 +1,7 @@
 """Turn an observation into a benchmark verdict with flags and a witness."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from itertools import product
 from typing import Any
 
 from .. import EVALUATOR_VERSION
@@ -10,7 +11,7 @@ from ..cube.facelets import facelet_name
 from ..cube.observation import Observation
 from ..cube.witness import Witness, build_witness
 from ..vision.extraction import Extraction
-from .rubric import grade
+from .rubric import FAIL, INCONCLUSIVE, POINTS, fools, grade
 from .validity import validity
 from .taxonomy import GEOMETRY_FAILURES, STICKER_DEFECTS, UNREADABLE, Flag, Verdict
 
@@ -106,7 +107,53 @@ def _failed(failures: list[SchemeAttempt], tried: int) -> ValidityCheck:
 
 
 def evaluate_extraction(extraction: Extraction, *, with_scramble: bool = True) -> dict[str, Any]:
-    """Verdict for one image from its extraction, as a JSON-ready record."""
+    """Verdict for one image from its extraction, as a JSON-ready record.
+
+    Stickers whose color call was close (``extraction.alternatives``) are tried both ways.
+    Whatever every reading agrees on is decided (e.g. two white centers make the cube
+    invalid whether a sticker is red or orange); a check or verdict that depends on the
+    reading is inconclusive. Validity takes the most favourable reading, so uncertainty in
+    reading the image never costs the model.
+    """
+    if not extraction.alternatives or extraction.observation is None:
+        return _evaluate(extraction, with_scramble)
+    uncertain = sorted(extraction.alternatives.items())
+    readings = [
+        _evaluate(replace(extraction, observation=extraction.observation.with_stickers(
+            {i: alternative for (i, alternative), flip in zip(uncertain, flips) if flip}), alternatives={}),
+            with_scramble)
+        for flips in product((False, True), repeat=len(uncertain))
+    ]
+    return _agreement(readings, {facelet_name(i): [extraction.observation.stickers[i], a] for i, a in uncertain})
+
+
+def _agreement(readings: list[dict[str, Any]], uncertain: dict[str, list[str | None]]) -> dict[str, Any]:
+    """One record from the readings of the uncertain stickers; the first is the best guess."""
+    record = dict(readings[0])
+    if len({r["verdict"] for r in readings}) > 1:
+        shared = set.intersection(*(set(r["flags"]) for r in readings))
+        record |= {"verdict": str(Verdict.INCONCLUSIVE),
+                   "flags": sorted(shared) + [str(Flag.VISION_LOW_CONFIDENCE)]}
+    checks = {}
+    for check, result in readings[0]["rubric"]["checks"].items():
+        outcomes = {r["rubric"]["checks"][check] for r in readings}
+        checks[check] = result if len(outcomes) == 1 else INCONCLUSIVE
+    rubric = dict(readings[0]["rubric"])
+    rubric |= {
+        "checks": checks,
+        "points": sum(POINTS[r] for r in checks.values()),
+        "marks": [m for m in rubric.get("marks", []) if checks[m["check"]] == FAIL],
+        "fools": fools(checks, Observation.from_faces(record["observation"]) if record.get("observation") else None),
+    }
+    if not rubric["marks"]:
+        del rubric["marks"]
+    validity = max((r["validity"] for r in readings), key=lambda v: v["score"])
+    return record | {"rubric": rubric, "validity": validity | {"uncertain": uncertain},
+                     "uncertain_stickers": uncertain}
+
+
+def _evaluate(extraction: Extraction, with_scramble: bool) -> dict[str, Any]:
+    """Verdict for one reading of the image."""
     record: dict[str, Any] = {
         "evaluator_version": EVALUATOR_VERSION,
         "extractor": extraction.extractor,

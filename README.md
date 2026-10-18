@@ -28,26 +28,31 @@ uv run --env-file .env rubiksbench backfill runs/<run>  # resend a run's failed 
 Validity says how close an image comes to a valid, scrambled, standard 3×3 cube, from 0% to 100%:
 
 ```
-validity = 1 − (repairs + defects) / chance        (clipped to 0–100%)
+validity = (1 − (repairs + defects) / chance) × scramble factor        (clipped to 0–100%)
 ```
 
 - **repairs** is the fewest visible stickers you would have to recolor to get a valid standard cube.
   It's exact: a dynamic program over every corner and edge slot, for each of the 24 orientations of the
   standard colors, keeping only reachable states (each piece once, twist, flip and parity). Hidden
   stickers are free, and the report lists which stickers to recolor.
-- **defects** are stickers no recoloring fixes: letters, or two colors on one sticker.
+- **defects** are stickers no recoloring fixes: letters, two colors on one sticker, or a second shade
+  of a color.
 - **chance** is the average repair distance of random colors on the 27 visible stickers: 4.45. The
   three hidden faces leave so much freedom that random stickers are only about four recolorings from a
   valid cube. So 0% means "no better than random", not "everything wrong".
 
-A valid cube scores 100%, and each sticker to fix costs about 22 points. An image that isn't read as
-a scrambled 3×3 cube scores 0%. Every mistake costs only the stickers it takes to fix it, so nothing is
-counted twice. Each model's score is the mean over its images, with a 95% CI. The models are ranked
-by it, and the gallery is sorted by it.
+- **scramble factor** holds a barely scrambled cube or a designed pattern in slightly less regard. It
+  is 100% for a cube that looks like a random scramble, sliding down to 80% as fewer stickers differ
+  from their face's center or more faces show a symmetric pattern (see the "scrambled" check below).
+
+A valid, randomly scrambled cube scores 100%, and each sticker to fix costs about 22 points. An image
+that isn't read as a 3×3 cube, or isn't scrambled at all (every face one color), scores 0%. Every
+mistake costs only the stickers it takes to fix it, so nothing is counted twice. Each model's score is
+the mean over its images, with a 95% CI. The models are ranked by it, and the gallery is sorted by it.
 
 ### Rubric (what is wrong)
 
-Every image is graded on 15 checks. Each check earns 1 point when passed, ½ when inconclusive and 0
+Every image is graded on 16 checks. Each check earns 1 point when passed, ½ when inconclusive and 0
 when failed. Every mistake costs its point once. A check is "blocked" (it scores 0, but doesn't count
 as a mistake of its own) in two cases:
 - **It can't be decided.** Sticker checks need the image read as a 3×3 cube, so a box-shaped cube
@@ -68,26 +73,52 @@ checks live in `evaluation/rubric.py`, and every report lists them with what eac
 5. single-colored stickers (no sticker split between two clearly different colors; a logo on a
    center is allowed)
 6. at most six colors (fewer is fine: a color can be entirely on the hidden faces)
-7. standard palette (every visible color is white, yellow, red, orange, green or blue)
-8. standard color pairs (no piece joins white–yellow, red–orange or blue–green)
-9. scrambled
-10. distinct centers
-11. standard center order
-12. possible pieces
-13. unique pieces
-14. solvable
-15. solvable (standard)
+7. one shade per color (on each face, all stickers of a color share a shade, so no lime next to
+   green; real cubes stay within 3° of hue, a sticker 15° off is a second shade)
+8. standard palette (every visible color is white, yellow, red, orange, green or blue)
+9. standard color pairs (no piece joins white–yellow, red–orange or blue–green)
+10. scrambled (looks like a random scramble: at least 15 of the 24 visible stickers differ from
+    their face's center, and at most one face shows a symmetric pattern; fewer than 1% of random
+    scrambles fail this, while a cube one move from solved or a designed pattern does)
+11. distinct centers
+12. standard center order
+13. possible pieces
+14. unique pieces
+15. solvable
+16. solvable (standard)
 
 Where a failed check has a clear culprit, the rubric records it as a *mark*. Marked stickers are
 named by facelet (`U9`, `F2`, ...), and faces that are not 3×3 are marked as a whole. Examples:
 the two centers that share a color, the corner or edge that can't exist, both copies of a
-duplicated piece, the stickers with letters on them, a sticker showing two colors. Which piece counts as "impossible" can depend
-on the color scheme, so the smallest set of culprits is shown, among the schemes that got
+duplicated piece, the stickers with letters on them, a sticker showing two colors or a second shade, the symmetric faces
+of a designed pattern. Which piece counts as "impossible" can depend on the color scheme, so the smallest set of culprits is shown, among the schemes that got
 furthest. Twist, flip and parity failures belong to the whole cube and are not marked. Blocked
 checks are not marked either.
 
-The HTML report shows each model's mean validity and rubric score, plus the share of points earned per
-check. The verdicts (`VALID_STANDARD`, …) are still reported next to them.
+### Who it fools
+
+Each check also says who would notice it failing: anyone at a glance (wrong grid, letters, an extra
+color, not scrambled), anyone who has held a cube (two centers alike, a piece showing one color twice,
+a second shade), a cuber looking carefully (opposite colors on a piece, impossible or duplicated
+pieces, center order) or only a solver (twist, flip, parity). A designed or shallow scramble doesn't
+count here: it is still a valid cube, with nothing to see through. An image fools everyone below the
+first who would notice, so each image fools *no one*, *a casual viewer*, *a cube owner*, *a cuber* or
+*everyone*. The report shows this per image and per model ("fools a cube owner" = gets past someone
+who has held a cube).
+
+### Reading the image
+
+- A sticker whose color is close to a boundary (red or orange?) is evaluated both ways, for up to four
+  such stickers. Whatever every reading agrees on is decided; a check that depends on the reading is
+  inconclusive, and validity takes the more favourable reading, so uncertainty in reading the image
+  never costs the model.
+- A face that fails the 3×3 check while being much blurrier than the rest of the cube (a thin, out of
+  focus top face at a shallow camera angle) is read as 3×3 like its sides, since a cube's faces share
+  their grid. Cells that straddle two stickers in the stretched image are left unknown rather than
+  guessed.
+
+The HTML report shows each model's mean validity, who its images fool and its rubric score, plus the
+share of points earned per check. The verdicts (`VALID_STANDARD`, …) are still reported next to them.
 
 ## Benchmark file
 

@@ -179,3 +179,13 @@ def test_two_colored_stickers_make_the_image_invalid(extractor):
 def test_plain_stickers_are_single_colored(extractor, name):
     extraction = extractor.extract(FIXTURES / f"{name}.jpg")
     assert extraction.details["geometry"]["split"] == [] and extraction.quality["single_color"] == "pass"
+
+
+def test_a_blurred_face_is_read_like_its_sides(extractor):
+    # Ideogram 4.5 #9: a shallow camera angle and lens blur leave the top face a thin, blurred
+    # sliver whose rows cannot be counted. Its sides are 3x3, so it is read as 3x3 too; cells
+    # that straddle two stickers in the stretched image are left unknown.
+    extraction = extractor.extract(FIXTURES / "ideogram-4-5-edge-on__0009.jpg")
+    assert "inferred_grid" in extraction.details["faces"]["U"]
+    assert Flag.WRONG_GRID_SIZE not in extraction.flags and extraction.quality["grid"] == "pass"
+    assert extraction.observation.to_faces() == {"U": "WRWGWGY..", "R": "GWRYBYRBG", "F": "WYRRWYBRW"}

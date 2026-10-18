@@ -48,7 +48,7 @@ def test_chance_distance_matches_its_constant():
     assert chance_distance(40, seed=1) == pytest.approx(CHANCE_DISTANCE, abs=0.75)
 
 
-QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "stickers": "pass", "single_color": "pass", "colors": "pass"}
+QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "stickers": "pass", "single_color": "pass", "shades": "pass", "colors": "pass"}
 
 
 def scored(faces, quality=QUALITY, details=None):
@@ -77,3 +77,20 @@ def test_an_unreadable_or_solved_cube_scores_zero():
     assert scored(REAL_CUBE, QUALITY | {"grid": "fail"}) == {"score": 0.0, "reason": "not read as a 3x3 cube"}
     solved = {"U": "G" * 9, "F": "R" * 9, "R": "W" * 9}
     assert scored(solved)["score"] == 0.0
+
+
+def test_a_designed_pattern_is_valid_but_held_in_slightly_less_regard():
+    import magiccube
+
+    from rubiksbench.evaluation.rubric import FOOLS, grade
+
+    # The checkerboard pattern: a valid cube, but every visible face is symmetric.
+    cube = magiccube.Cube(3)
+    cube.rotate("R2 L2 U2 D2 F2 B2")
+    observation = Observation.from_facelet_string(cube.get_kociemba_facelet_colors()).restricted_to("UFR")
+    extraction = Extraction("annotation", observation, quality=QUALITY)
+    rubric = grade(extraction, validate(observation, with_scramble=False).to_dict())
+    result = validity(extraction, rubric["checks"])
+    assert rubric["checks"]["scrambled"] == "fail" and result["repairs"] == 0
+    assert 0.8 <= result["score"] < 1.0 and result["score"] == result["scramble_factor"]
+    assert FOOLS[rubric["fools"]] == "everyone"  # it is a valid cube: nothing to see through

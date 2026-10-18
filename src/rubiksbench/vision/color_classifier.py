@@ -40,6 +40,9 @@ class StickerColor:
     lab: tuple[float, float, float]
     hue: float
     chroma: float
+    # The color across the nearest decision boundary: what the sticker would be if the
+    # call went the other way (only meaningful when ``margin`` is small).
+    alternative: str = ""
 
 
 def to_lab(rgb: tuple[float, float, float]) -> tuple[float, float, float]:
@@ -71,20 +74,50 @@ def second_color_share(pixels_bgr: np.ndarray) -> float:
     return float((saturated & (turn > SECOND_COLOR_HUE)).mean())
 
 
+# Typical hue of each standard color: the median over confidently read stickers of two
+# 14-model benchmark runs.
+TYPICAL_HUE = {"R": 35.2, "O": 55.2, "Y": 93.4, "G": 147.5, "B": 282.7}
+# On one face (same light), real cubes keep each color within 3 degrees of hue; a sticker
+# further than this from its color's most typical sticker there is a second shade.
+MAX_SHADE_SPREAD = 15.0
+
+
+def off_shade(face: list[StickerColor], min_margin: float) -> list[int]:
+    """Stickers (indices) on one face showing a second shade of their color, e.g. lime next to green.
+
+    Per color, the sticker closest to that color's typical hue is the reference; confidently
+    read stickers more than ``MAX_SHADE_SPREAD`` from it are off-shade.
+    """
+    def turn(a: float, b: float) -> float:
+        return abs((a - b + 180) % 360 - 180)
+
+    out = []
+    for label, typical in TYPICAL_HUE.items():
+        same = [(i, c) for i, c in enumerate(face) if c.label == label and c.margin >= min_margin]
+        if len(same) < 2:
+            continue
+        reference = min(same, key=lambda ic: turn(ic[1].hue, typical))[1]
+        out += [i for i, c in same if turn(c.hue, reference.hue) > MAX_SHADE_SPREAD]
+    return sorted(out)
+
+
 def classify(rgb: tuple[float, float, float]) -> StickerColor:
     lab = to_lab(rgb)
     _, a, b = lab
     chroma = float(np.hypot(a, b))
     hue = float(np.degrees(np.arctan2(b, a)) % 360)
     white_limit = WHITE_MAX_CHROMA_YELLOWISH if _YELLOW_BAND[0] <= hue < _YELLOW_BAND[1] else WHITE_MAX_CHROMA
-    if chroma < white_limit:
-        return StickerColor("W", white_limit - chroma, lab, hue, chroma)
     for i, (low, label) in enumerate(HUE_BANDS):
         high = HUE_BANDS[(i + 1) % len(HUE_BANDS)][0]
         if high <= low:
             high += 360
         h = hue + 360 if hue < low else hue
         if low <= h < high:
-            margin = min(h - low, high - h, chroma - white_limit)
-            return StickerColor(label, margin, lab, hue, chroma)
-    raise AssertionError("hue bands cover the full circle")
+            break
+    else:
+        raise AssertionError("hue bands cover the full circle")
+    if chroma < white_limit:
+        return StickerColor("W", white_limit - chroma, lab, hue, chroma, label)
+    sides = {HUE_BANDS[i - 1][1]: h - low, HUE_BANDS[(i + 1) % len(HUE_BANDS)][1]: high - h, "W": chroma - white_limit}
+    alternative = min(sides, key=sides.get)
+    return StickerColor(label, sides[alternative], lab, hue, chroma, alternative)

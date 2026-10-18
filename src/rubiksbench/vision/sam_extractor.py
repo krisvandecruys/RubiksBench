@@ -25,7 +25,7 @@ import numpy as np
 
 from ..cube.observation import Observation
 from ..evaluation.taxonomy import Flag
-from .color_classifier import classify, second_color_share
+from .color_classifier import classify, off_shade, second_color_share
 from .extraction import FAIL, INCONCLUSIVE, PASS, Extraction, geometry
 from .grid_extractor import _STROKE
 
@@ -230,7 +230,8 @@ class SamExtractor:
                         placed.append((s, face, 3 * r + c))
             grids[face] = cells
         details["bins_per_face"] = bins_per_face
-        quality = {"cube": PASS, "shape": PASS, "grid": PASS, "stickers": PASS, "single_color": PASS, "colors": PASS}
+        quality = {"cube": PASS, "shape": PASS, "grid": PASS, "stickers": PASS, "single_color": PASS, "shades": PASS,
+                   "colors": PASS}
         # Same rule as the vision extractor: letters on most non-center stickers.
         marked = sum(s.marking > 0.04 for s, _, index in placed if index != 4)
         details["marked_stickers"] = marked
@@ -244,7 +245,13 @@ class SamExtractor:
             {face: (cols, rows) for face, (rows, cols) in bins_per_face.items()},
             [f"{face}{index + 1}" for s, face, index in placed if index != 4 and s.marking > 0.04],
             split := [f"{face}{index + 1}" for s, face, index in placed if index != 4 and s.second_color > 0.10],
+            shades := [f"{face}{members[k][0] + 1}" for face in GRID_AXES
+                       if (members := [(index, classify(s.rgb)) for s, f, index in placed if f == face])
+                       for k in off_shade([c for _, c in members], self.min_color_margin)],
         )
+        if shades:  # same rule as the vision extractor
+            flags.append(Flag.OFF_SHADE_STICKERS)
+            quality["shades"] = FAIL
         if split:  # same rule as the vision extractor
             flags.append(Flag.SPLIT_STICKERS)
             quality["single_color"] = FAIL

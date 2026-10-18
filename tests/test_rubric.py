@@ -5,7 +5,7 @@ from rubiksbench.vision.extraction import Extraction
 
 from .test_validator import REAL_CUBE
 
-QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "stickers": "pass", "single_color": "pass", "colors": "pass"}
+QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "stickers": "pass", "single_color": "pass", "shades": "pass", "colors": "pass"}
 
 
 def graded(faces):
@@ -16,7 +16,7 @@ def graded(faces):
 
 def test_real_cube_earns_every_point():
     result = graded(REAL_CUBE)
-    assert result["points"] == MAX_POINTS == 15
+    assert result["points"] == MAX_POINTS == 16
     assert "opposite_pairs" not in result
 
 
@@ -125,3 +125,63 @@ def test_duplicate_piece_is_found_without_a_color_scheme():
     observation = Observation.from_faces({"U": ".....W.W.", "F": ".B.......", "R": ".B......."})
     found = scheme_free_piece_failures(observation)
     assert [(flag, c.reason) for flag, c in found] == [(Flag.DUPLICATE_PIECE, "duplicate edge in UR, UF")]
+
+
+def test_an_uncertain_sticker_does_not_block_what_holds_either_way():
+    from rubiksbench.cube.facelets import facelet_index
+    from rubiksbench.evaluation.evaluator import evaluate_extraction
+
+    # Three white centers (FLUX.2 [dev] #2): invalid whether R4 is yellow or green.
+    faces = {"U": "GOG OWW YYO", "F": "WBR GWB RBW", "R": "WBW YWR GBW"}
+    extraction = Extraction("annotation", Observation.from_faces(faces), quality=QUALITY,
+                            alternatives={facelet_index("R4"): "G"})
+    record = evaluate_extraction(extraction, with_scramble=False)
+    assert record["verdict"] == "INVALID" and record["rubric"]["checks"]["distinct_centers"] == "fail"
+    assert record["uncertain_stickers"] == {"R4": ["Y", "G"]}
+
+
+def test_a_check_that_depends_on_the_uncertain_sticker_is_inconclusive():
+    from rubiksbench.cube.facelets import facelet_index
+    from rubiksbench.evaluation.evaluator import evaluate_extraction
+
+    # The real cube, with U8 (part of the U-F edge, F2 = O) unsure between red and orange:
+    # red makes a red-orange edge, orange a valid cube.
+    faces = dict(REAL_CUBE, U="RWR BGB RRY")
+    extraction = Extraction("annotation", Observation.from_faces(faces), quality=QUALITY,
+                            alternatives={facelet_index("U8"): "Y"})
+    plain = evaluate_extraction(Extraction("annotation", Observation.from_faces(faces), quality=QUALITY),
+                                with_scramble=False)
+    record = evaluate_extraction(extraction, with_scramble=False)
+    assert plain["verdict"] == "INVALID" and record["verdict"] == "INCONCLUSIVE"
+    assert record["rubric"]["checks"]["standard_pairs"] == "inconclusive"
+    # Validity takes the favourable reading: with U8 yellow it is the real, valid cube.
+    assert record["validity"]["score"] == 1.0
+
+
+def test_who_an_image_fools_is_set_by_the_first_who_would_notice():
+    from rubiksbench.evaluation.rubric import FOOLS
+
+    def who(faces):
+        return FOOLS[graded(faces)["fools"]]
+
+    assert who(REAL_CUBE) == "everyone"
+    # Two green centers: anyone who has held a cube notices, so it fools only a casual viewer.
+    assert who(dict(REAL_CUBE, R="ORG WGG OYB")) == "a casual viewer"
+    # A red-orange edge takes a cuber looking carefully.
+    faces = dict(REAL_CUBE, U="RWR BGB RRY", F="GOG ROR OYG")
+    assert graded(faces)["checks"]["standard_pairs"] == "fail" and who(faces) == "a cube owner"
+
+
+def test_only_a_solver_notices_a_parity_error():
+    from rubiksbench.evaluation.rubric import FOOLS
+
+    from .test_validator import EDGE_FACELETS, full, scrambled, swap
+
+    facelets = scrambled(9)
+    (a1, a2), (b1, b2) = EDGE_FACELETS[0], EDGE_FACELETS[1]
+    # Two swapped edges on a fully visible cube: every piece is real and appears once.
+    observation = full(swap(facelets, (a1, b1), (a2, b2)))
+    result = grade(Extraction("annotation", observation, quality=QUALITY),
+                   validate(observation, with_scramble=False).to_dict())
+    assert result["checks"]["unique_pieces"] == "pass" and result["checks"]["solvable"] == "fail"
+    assert FOOLS[result["fools"]] == "a cuber"

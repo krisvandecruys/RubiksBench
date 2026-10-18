@@ -10,7 +10,7 @@ import math
 from collections import Counter
 from typing import Any
 
-from .rubric import CHECKS, MAX_POINTS
+from .rubric import CHECKS, FOOLS, MAX_POINTS
 from .taxonomy import Verdict
 
 
@@ -57,6 +57,8 @@ def score_model(generations: list[dict[str, Any]], evaluations: dict[str, dict[s
         c.id: sum({"pass": 1.0, "inconclusive": 0.5}.get(r["checks"][c.id], 0.0) for r in graded) / len(graded)
         for c in CHECKS
     } if graded else {}
+    # How many images fool each audience (index into FOOLS); None: not everything could be checked.
+    fooled = Counter(r.get("fools") for r in graded)
     validities = [evaluations[g["sample_id"]]["validity"]["score"] for g in ok
                   if "validity" in evaluations.get(g["sample_id"], {})]
     costs = [g["cost"] for g in generations if g.get("cost") is not None]
@@ -76,6 +78,9 @@ def score_model(generations: list[dict[str, Any]], evaluations: dict[str, dict[s
         "rubric_ci95": mean_interval(points, 0.0, MAX_POINTS),
         "rubric_max": MAX_POINTS,
         "rubric_by_check": by_check,
+        "fools": {who: fooled[i] for i, who in enumerate(FOOLS)} | {"unclear": fooled[None]},
+        # Share of images that would get past someone who has held a cube (fool a cube owner or more).
+        "fools_owner_rate": rate(sum(fooled[i] for i in range(2, len(FOOLS)))),
         "verdicts": {v.value: verdicts[v] for v in Verdict},
         "standard_valid_rate": rate(standard),
         "standard_valid_rate_ci95": wilson_interval(standard, n),
@@ -118,7 +123,7 @@ def format_table(scores: dict[str, Any]) -> str:
         return "-" if x is None else f"{x:.1f}"
 
     header: tuple[str, ...] = (
-        "model", "images", "validity", "95% CI", "passed", "failed", "gen. errors", "rubric", "cost"
+        "model", "images", "validity", "95% CI", "fools owner", "passed", "failed", "gen. errors", "rubric", "cost"
     )
     rows = [header]
     for name in ranked(scores):
@@ -130,6 +135,7 @@ def format_table(scores: dict[str, Any]) -> str:
                 str(s["images"]),
                 pct(s["validity_mean"]),
                 "-" if ci is None else f"{pct(ci[0])}-{pct(ci[1])}",
+                pct(s["fools_owner_rate"]),
                 f"{s['passed']} ({pct(s['pass_rate'])})",
                 str(s["failed"]),
                 str(s["generation_failures"]),

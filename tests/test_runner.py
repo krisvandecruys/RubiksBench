@@ -98,8 +98,8 @@ def test_run_generates_serially_and_scores(tmp_path):
     generations = store.generations()
     assert all("seed" in g["request"] for g in generations)
     assert json.loads(paths["json"].read_text())["scores"] == scores
-    # One valid image (15 points) and one unannotated, so inconclusive at the first check (0.5).
-    assert good["rubric_mean"] == pytest.approx(7.75)
+    # One valid image (16 points) and one unannotated, so inconclusive at the first check (0.5).
+    assert good["rubric_mean"] == pytest.approx(8.25)
     # Validity: the valid image is 100%, the unreadable one 0%.
     assert good["validity_mean"] == pytest.approx(0.5)
     assert (good["passed"], good["failed"], good["generation_failures"]) == (1, 1, 0)

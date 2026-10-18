@@ -9,13 +9,14 @@ titles on every mark, and tables as the accessible view of every chart.
 """
 
 import json
+import re
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
 from typing import Any
 
 from .. import EVALUATOR_VERSION
-from .rubric import CHECKS, MAX_POINTS
+from .rubric import CHECKS, FOOLS, MAX_POINTS, NOTICED_BY
 from .scoring import ranked
 from ..cube.repair import CHANCE_DISTANCE
 from .taxonomy import Verdict
@@ -107,13 +108,13 @@ def _validity_strip(s: dict[str, Any]) -> str:
     return _strip(mean, ci, 1.0, VALIDITY_TICKS, label)
 
 
-def _outcome_bar(s: dict[str, Any]) -> str:
-    counts = _outcome_counts(s)
+def _bar(counts: list[int], items: list[tuple[str, str]]) -> str:
+    """A stacked bar of counts, one segment per (label, color token)."""
     total = sum(counts)
     if not total:
         return ""
     width, x, parts = 120, 0.0, []
-    for count, (_, label, token) in zip(counts, OUTCOMES):
+    for count, (label, token) in zip(counts, items):
         if count:
             w = width * count / total
             parts.append(
@@ -122,6 +123,20 @@ def _outcome_bar(s: dict[str, Any]) -> str:
             )
             x += w
     return f'<svg class="bar" width="{width}" height="16" viewBox="0 0 {width} 16">{"".join(parts)}</svg>'
+
+
+def _outcome_bar(s: dict[str, Any]) -> str:
+    return _bar(_outcome_counts(s), [(label, token) for _, label, token in OUTCOMES])
+
+
+# From "fools no one" (red) to "fools everyone" (green), then images that could not be fully checked.
+FOOLS_ITEMS = [(f"fools {who}", token) for who, token in zip(
+    FOOLS, ("--status-critical", "--status-warning", "--outcome-2", "--outcome-5", "--status-good"))]
+
+
+def _fools_bar(s: dict[str, Any]) -> str:
+    counts = [s["fools"][who] for who in FOOLS] + [s["fools"]["unclear"]]
+    return _bar(counts, FOOLS_ITEMS + [("not fully checked", "--blocked")])
 
 
 def _check_strip(checks: dict[str, str] | None) -> str:
@@ -189,7 +204,10 @@ svg.marks g:hover .line { stroke-width: 4; }
 .sample ul.marks { margin: 4px 0 0; padding-left: 16px; color: var(--ink); }
 .sample .repairs { margin-top: 4px; color: var(--ink); }
 .sample .body { padding: 8px 10px 10px; font-size: 12px; color: var(--ink-2); }
-.sample .head { display: flex; justify-content: space-between; color: var(--ink); font-weight: 600; font-size: 13px; }
+.sample .head { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); font-weight: 600;
+  font-size: 13px; }
+.sample .head > :first-child { min-width: 0; }
+.sample .head > :last-child { flex-shrink: 0; white-space: nowrap; }
 .sample svg.checks { display: block; margin: 6px 0; }
 .sample .flags { margin-top: 4px; word-break: break-word; }
 .noimg { aspect-ratio: 1; display: grid; place-items: center; color: var(--muted); background: var(--grid); }
@@ -232,7 +250,8 @@ def _scores_section(scores: dict[str, Any]) -> str:
             + (" <span class='badge'>reference</span>" if s.get("reference") else "")
             + f"<div class='muted'><code>{escape(s['model'])}</code></div></td>"
             f"<td><b>{_pct(s['validity_mean'])}</b></td><td>{'–' if ci is None else f'{_pct(ci[0])}–{_pct(ci[1])}'}</td>"
-            f"<td>{_validity_strip(s)}</td><td{rubric_title}>{rubric}<span class='muted'>/{MAX_POINTS:.0f}</span></td>"
+            f"<td>{_validity_strip(s)}</td><td>{_fools_bar(s)}</td>"
+            f"<td{rubric_title}>{rubric}<span class='muted'>/{MAX_POINTS:.0f}</span></td>"
             f"<td>{s['images']}</td>"
             f"<td><b>{s['passed']}</b> <span class='muted'>({_pct(s['pass_rate'])})</span></td><td>{s['failed']}</td>"
             f"<td>{s['generation_failures']}</td><td>{_outcome_bar(s)}</td><td>{cost}</td><td>{latency}</td></tr>"
@@ -242,19 +261,26 @@ def _scores_section(scores: dict[str, Any]) -> str:
         "cube: the fewest stickers you would have to recolor to get one (plus any sticker no recoloring fixes, "
         "such as one with letters or two colors), compared with random colors. 100% is a valid cube, 0% is no "
         "better than coloring the stickers at random (which needs about "
-        f"{CHANCE_DISTANCE:.1f} recolorings, because the three hidden faces leave a lot of freedom). An image "
-        "that is not read as a 3x3 cube scores 0%.</p>"
+        f"{CHANCE_DISTANCE:.1f} recolorings, because the three hidden faces leave a lot of freedom). A barely "
+        "scrambled cube or a designed pattern is held in slightly less regard: its validity is multiplied by a "
+        "scramble factor between 80% and 100%. An image that is not read as a 3x3 cube, or is not scrambled at "
+        "all, scores 0%.</p>"
+        "<p><b>Who it fools</b> says who would be taken in by each image: every failed check is one that "
+        f"{escape(NOTICED_BY[0])}, {escape(NOTICED_BY[1])}, {escape(NOTICED_BY[2])} or {escape(NOTICED_BY[3])} "
+        "would notice, and an image fools everyone below the first who notices. An image that passes every "
+        "check fools everyone.</p>"
         f"<p>The <b>rubric</b> explains what is wrong: up to {MAX_POINTS:.0f} points, 1 per check passed, ½ when "
         "inconclusive, 0 when failed or blocked (see <a href='#checks'>Checks</a>). An image <b>passes</b> only "
         "if it passes all checks. Scores are over generated images; requests that returned no image are counted "
         "separately as generation errors.</p>"
         "<div class='card'><table><thead><tr><th>Model</th><th>Validity</th><th>95% CI</th>"
-        f"<th>{_axis(1.0, VALIDITY_TICKS)}</th><th>Rubric</th><th>Images</th>"
+        f"<th>{_axis(1.0, VALIDITY_TICKS)}</th><th>Who it fools</th><th>Rubric</th><th>Images</th>"
         f"<th title='Images passing all {MAX_POINTS:.0f} checks'>Passed</th>"
         "<th title='Images missing at least one check'>Failed</th>"
         "<th title='Requests that returned no image (API or model errors)'>Gen. errors</th>"
         "<th>Outcomes</th><th>Cost</th><th>Latency</th></tr></thead><tbody>"
         + "".join(rows) + "</tbody></table>"
+        + _legend(FOOLS_ITEMS + [("not fully checked", "--blocked")])
         + _legend([(label, token) for _, label, token in OUTCOMES]) + "</div>"
     )
 
@@ -332,6 +358,17 @@ def _gallery_order(samples: list[dict[str, Any]], scores: dict[str, Any]) -> lis
     return sorted(samples, key=key)
 
 
+def _text(label: str) -> str:
+    """Escaped label whose color pairs ("B-G") never break across lines."""
+    return re.sub(r"\b([WYROGBX])-(?=[WYROGBX]\b)", "\\1\u2011", escape(label))
+
+
+def _fools(level: int | None) -> str:
+    if level is None:
+        return ""
+    return f"<div class='repairs'>Fools <b>{escape(FOOLS[level])}</b></div>"
+
+
 def _repairs(validity: dict[str, Any] | None) -> str:
     """One line on how far the image is from a valid cube, e.g. "2 stickers to fix: U5 R→G, F3 B→G"."""
     if not validity:
@@ -341,11 +378,14 @@ def _repairs(validity: dict[str, Any] | None) -> str:
     parts = [f"{f['facelet']} {f['seen']}→{f['color']}" for f in validity["fixes"]]
     parts += [f"{name} (sticker defect)" for name in validity["defective"]]
     count = len(parts)
+    factor = validity.get("scramble_factor", 1.0)
+    scramble = (f" · <span title='Barely scrambled or a designed pattern (scramble score {validity['scramble']:g})'>"
+                f"scramble ×{factor:.2f}</span>" if factor < 1 else "")
     if not count:
-        return "<div class='repairs'>valid: nothing to fix</div>"
+        return f"<div class='repairs'>valid: nothing to fix{scramble}</div>"
     noun = "sticker" if count == 1 else "stickers"
     title = "Recoloring these stickers gives the nearest valid standard cube (one of them, when several tie)"
-    return f"<div class='repairs' title='{title}'>{count} {noun} to fix: {escape(', '.join(parts))}</div>"
+    return f"<div class='repairs' title='{title}'>{count} {noun} to fix: {_text(', '.join(parts))}{scramble}</div>"
 
 
 def _marks_svg(s: dict[str, Any]) -> str:
@@ -384,12 +424,12 @@ def _samples_section(samples: list[dict[str, Any]], scores: dict[str, Any]) -> s
         validity = s.get("validity")
         headline = points if validity is None else f"{_pct(validity['score'])} · {points}"
         flags = ", ".join(escape(f) for f in s["flags"]) or "–"
-        problems = "".join(f"<li>{escape(m['label'])}</li>" for m in s.get("marks") or [])
+        problems = "".join(f"<li>{_text(m['label'])}</li>" for m in s.get("marks") or [])
         problems = f"<ul class='marks'>{problems}</ul>" if problems else ""
         cards.append(
             f"<div class='sample'>{image}<div class='body'><div class='head'><span>{escape(s['model_name'])} "
             f"#{s['iteration']}</span><span>{headline}</span></div>{_check_strip(s.get('checks'))}"
-            f"<div>{escape(s['verdict'])} · {seed}{overlay}</div>{_repairs(validity)}{problems}"
+            f"<div>{escape(s['verdict'])} · {seed}{overlay}</div>{_fools(s.get('fools'))}{_repairs(validity)}{problems}"
             f"<div class='flags muted'>{flags}</div></div></div>"
         )
     legend = _legend([(label, token) for label, token in CHECK_RESULTS.values()] + [("problem outline", "--mark")])
@@ -468,6 +508,7 @@ def write_results(
                 "points": e.get("rubric", {}).get("points"),
                 "checks": e.get("rubric", {}).get("checks"),
                 "validity": e.get("validity"),
+                "fools": e.get("rubric", {}).get("fools"),
                 "reference": bool(g.get("reference")),
                 **_sample_marks(e),
                 "overlay_path": (
