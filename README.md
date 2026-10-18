@@ -211,6 +211,13 @@ A JSON object mapping faces to 9-sticker grids, read row by row, with `.` for un
 three-face view, the top face is `U`, front-left is `F` and front-right is `R`. Each grid's top
 row is the edge nearest the U face (for U itself, the edge nearest the back).
 
+## Versioning
+
+Any change that can alter a score bumps the **minor** version (0.4.x → 0.5.0), and with it the
+evaluator version that every report and result file records. Scores are comparable only when the
+major and minor versions match: results from 0.4.5 and 0.4.6 can be compared, results from 0.4.x and
+0.5.x cannot. Patch releases change everything else (report layout, tooling, docs) but never a score.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

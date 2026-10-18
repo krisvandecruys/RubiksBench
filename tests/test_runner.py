@@ -197,3 +197,10 @@ def test_valid_images_show_a_solution_with_a_3d_view():
     query = parse_qs(urlparse(solution["viewer"]).query)
     assert query["alg"] == [solution["moves"]] and query["setup-alg"][0].endswith(witness["scramble"])
     assert _solution({"verdict": "INVALID"}) is None
+
+
+def test_versions_share_major_minor():
+    # A scoring change bumps the minor version; patch releases never change a score.
+    from rubiksbench import EVALUATOR_VERSION, __version__
+
+    assert EVALUATOR_VERSION.split(".")[:2] == __version__.split(".")[:2]
