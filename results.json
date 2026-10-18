@@ -1,5 +1,5 @@
 {
-  "scored_at": "2026-10-18T07:53:11.313577+00:00",
+  "scored_at": "2026-10-18T08:28:30.779162+00:00",
   "evaluator_version": "0.4.5",
   "run": {
     "benchmark_version": "0.4.0",
@@ -1227,6 +1227,11 @@
         "defective": []
       },
       "fools": 4,
+      "solution": {
+        "moves": "U' F' B2 D F2 U R' F' U2 B' L' U' F2 L2 D2 R2 B2 U' R2 L2 D2",
+        "count": 21,
+        "viewer": "https://alpha.twizzle.net/edit/?setup-alg=x2+y+x+D2+L2+R2+U+B2+R2+D2+L2+F2+U+L+B+U2+F+R+U%27+F2+D%27+B2+F+U&alg=U%27+F%27+B2+D+F2+U+R%27+F%27+U2+B%27+L%27+U%27+F2+L2+D2+R2+B2+U%27+R2+L2+D2"
+      },
       "reference": true,
       "marks": [],
       "overlay_path": "references/reference_1.extraction.jpg"
@@ -1274,6 +1279,11 @@
         "defective": []
       },
       "fools": 4,
+      "solution": {
+        "moves": "U L' B2 U2 B D' L' B' L2 U' B R D' R2 L2 D2 B2 R2 L2 U R2 U",
+        "count": 22,
+        "viewer": "https://alpha.twizzle.net/edit/?setup-alg=y+x2+U%27+R2+U%27+L2+R2+B2+D2+L2+R2+D+R%27+B%27+U+L2+B+L+D+B%27+U2+B2+L+U%27&alg=U+L%27+B2+U2+B+D%27+L%27+B%27+L2+U%27+B+R+D%27+R2+L2+D2+B2+R2+L2+U+R2+U"
+      },
       "reference": true,
       "marks": [],
       "overlay_path": "references/reference_2.extraction.jpg"
@@ -1321,6 +1331,11 @@
         "defective": []
       },
       "fools": 4,
+      "solution": {
+        "moves": "U2 R' D' L' U F' R2 D2 R2 U F2 R U' F2 B2 U2 B2 D' F2 D L2 F2",
+        "count": 22,
+        "viewer": "https://alpha.twizzle.net/edit/?setup-alg=x+y%27+x+F2+L2+D%27+F2+D+B2+U2+B2+F2+U+R%27+F2+U%27+R2+D2+R2+F+U%27+L+D+R+U2&alg=U2+R%27+D%27+L%27+U+F%27+R2+D2+R2+U+F2+R+U%27+F2+B2+U2+B2+D%27+F2+D+L2+F2"
+      },
       "reference": true,
       "marks": [],
       "overlay_path": "references/reference_3.extraction.jpg"
@@ -1393,6 +1408,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -1692,6 +1708,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -1962,6 +1979,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -2258,6 +2276,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -2491,6 +2510,7 @@
         "defective": []
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -2834,6 +2854,11 @@
         "defective": []
       },
       "fools": 2,
+      "solution": {
+        "moves": "L2 U2 B2 R2 U B' U' F' B2 L' F' B2 D L2 U R2 L2 U' B2 U",
+        "count": 20,
+        "viewer": null
+      },
       "reference": false,
       "image_size": [
         1024,
@@ -2948,6 +2973,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -3069,6 +3095,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -3271,6 +3298,11 @@
         "defective": []
       },
       "fools": 4,
+      "solution": {
+        "moves": "D L U R2 F L B L U B R2 U R2 L2 F2 R2 D F2 L2 U",
+        "count": 20,
+        "viewer": "https://alpha.twizzle.net/edit/?setup-alg=y+x+U%27+L2+F2+D%27+R2+F2+L2+R2+U%27+R2+B%27+U%27+L%27+B%27+L%27+F%27+R2+U%27+L%27+D%27&alg=D+L+U+R2+F+L+B+L+U+B+R2+U+R2+L2+F2+R2+D+F2+L2+U"
+      },
       "reference": false,
       "image_size": [
         1024,
@@ -3403,6 +3435,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -3513,6 +3546,7 @@
         }
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -3645,6 +3679,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -3749,6 +3784,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -3853,6 +3889,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -3935,6 +3972,7 @@
         }
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -4039,6 +4077,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -4174,6 +4213,7 @@
         "reason": "not scrambled"
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -4647,6 +4687,7 @@
         }
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -4817,6 +4858,7 @@
         ]
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -5345,6 +5387,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -5501,6 +5544,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -5718,6 +5762,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -5977,6 +6022,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -6332,6 +6378,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -6562,6 +6609,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -6732,6 +6780,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -7021,6 +7070,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -7412,6 +7462,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -7658,6 +7709,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -7921,6 +7973,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -8051,6 +8104,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -8410,6 +8464,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -8754,6 +8809,7 @@
         }
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -8972,6 +9028,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -9271,6 +9328,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -9695,6 +9753,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -9937,6 +9996,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -10231,6 +10291,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -10621,6 +10682,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -10752,6 +10814,7 @@
         ]
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -11087,6 +11150,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -11318,6 +11382,7 @@
         }
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -11436,6 +11501,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -11667,6 +11733,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -11879,6 +11946,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -12161,6 +12229,7 @@
         ]
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -12402,6 +12471,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -12682,6 +12752,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -12997,6 +13068,11 @@
         "defective": []
       },
       "fools": 2,
+      "solution": {
+        "moves": "U F' U' L2 D' R' B2 U' L U2 D F U2 R2 U' B2 D2 R2 B2 U L2 D'",
+        "count": 22,
+        "viewer": null
+      },
       "reference": false,
       "image_size": [
         1024,
@@ -13224,6 +13300,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -13443,6 +13520,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -13652,6 +13730,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -13908,6 +13987,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -14178,6 +14258,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -14495,6 +14576,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -14965,6 +15047,11 @@
         "defective": []
       },
       "fools": 2,
+      "solution": {
+        "moves": "F2 R' U' F B L' B' U' D' R D' R2 L2 U' R2 U B2 R2 U2",
+        "count": 19,
+        "viewer": null
+      },
       "reference": false,
       "image_size": [
         1024,
@@ -15136,6 +15223,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -15461,6 +15549,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -15744,6 +15833,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -15951,6 +16041,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -16140,6 +16231,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -16407,6 +16499,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -16784,6 +16877,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -17002,6 +17096,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -17220,6 +17315,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -17453,6 +17549,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -17949,6 +18046,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -18279,6 +18377,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -18549,6 +18648,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -18894,6 +18994,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -19163,6 +19264,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -19350,6 +19452,7 @@
         }
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -19775,6 +19878,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -20054,6 +20158,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -20310,6 +20415,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -20612,6 +20718,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -20838,6 +20945,11 @@
         "defective": []
       },
       "fools": 2,
+      "solution": {
+        "moves": "F2 B' U' L' F' D B' L2 B2 R F U' B2 R2 L2 U F2 L2 U' D' F2",
+        "count": 21,
+        "viewer": null
+      },
       "reference": false,
       "image_size": [
         1024,
@@ -21197,6 +21309,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -21455,6 +21568,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -21580,6 +21694,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -21874,6 +21989,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -22248,6 +22364,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -22505,6 +22622,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -22695,6 +22813,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -22980,6 +23099,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -23358,6 +23478,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -23533,6 +23654,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -23666,6 +23788,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -23903,6 +24026,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -24117,6 +24241,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -24346,6 +24471,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -24688,6 +24814,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -24926,6 +25053,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -25281,6 +25409,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -25443,6 +25572,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -25623,6 +25753,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -25817,6 +25948,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -26091,6 +26223,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -26314,6 +26447,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -26461,6 +26595,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -26581,6 +26716,7 @@
         ]
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -26842,6 +26978,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -27287,6 +27424,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -27577,6 +27715,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -27880,6 +28019,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -28155,6 +28295,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -28376,6 +28517,7 @@
         ]
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -28758,6 +28900,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -29038,6 +29181,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -29266,6 +29410,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -29536,6 +29681,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -29824,6 +29970,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -30152,6 +30299,7 @@
         }
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -30563,6 +30711,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -30790,6 +30939,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -31082,6 +31232,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -31371,6 +31522,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -31755,6 +31907,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -32053,6 +32206,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -32394,6 +32548,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -32782,6 +32937,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -33207,6 +33363,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -33465,6 +33622,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -33626,6 +33784,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -33815,6 +33974,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -33947,6 +34107,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -34216,6 +34377,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -34449,6 +34611,7 @@
         "defective": []
       },
       "fools": 2,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -34757,6 +34920,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -35087,6 +35251,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         1024,
@@ -35323,6 +35488,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -35427,6 +35593,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -35531,6 +35698,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -35663,6 +35831,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -35796,6 +35965,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -36178,6 +36348,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -36547,6 +36718,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -36897,6 +37069,7 @@
         "defective": []
       },
       "fools": 1,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -37086,6 +37259,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": 0,
+      "solution": null,
       "reference": false,
       "image_size": [
         2048,
@@ -37219,6 +37393,7 @@
         "reason": "not read as a 3x3 cube"
       },
       "fools": null,
+      "solution": null,
       "reference": false,
       "marks": [],
       "overlay_path": "images/ideogram-4-0__0009.extraction.jpg"
