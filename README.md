@@ -17,7 +17,8 @@ uv run rubiksbench validate observation.json          # check a hand-read cube (
 uv run --env-file .env rubiksbench models "Flux 3"   # find model ids (--all includes LoRAs/video)
 uv run rubiksbench models flux --backend huggingface  # Hugging Face models served by Inference Providers
 uv run --env-file .env rubiksbench run configs/benchmark_runware.toml   # .env: RUNWARE_API_KEY / HF_TOKEN / FAL_KEY
-uv run rubiksbench score runs/<run>                     # re-evaluate + re-score an existing run (no API calls)
+uv run rubiksbench score runs/<run>                     # re-evaluate + re-score an existing run (no API calls;
+                                                        #   a line per image with the time left)
 uv run --env-file .env rubiksbench backfill runs/<run>  # resend a run's failed requests (same settings and seeds)
 uv run rubiksbench site runs/<run> site/ --url https://<you>.github.io/RubiksBench/ --share-image <sample>
                                                   # shareable static site of the newest report (GitHub Pages)
@@ -54,7 +55,7 @@ the mean over its images, with a 95% CI. The models are ranked by it, and the ga
 
 ### Rubric (what is wrong)
 
-Every image is graded on 16 checks. Each check earns 1 point when passed, ½ when inconclusive and 0
+Every image is graded on 17 checks. Each check earns 1 point when passed, ½ when inconclusive and 0
 when failed. Every mistake costs its point once. A check is "blocked" (it scores 0, but doesn't count
 as a mistake of its own) in two cases:
 - **It can't be decided.** Sticker checks need the image read as a 3×3 cube, so a box-shaped cube
@@ -71,28 +72,29 @@ checks live in `evaluation/rubric.py`, and every report lists them with what eac
 1. cube detected
 2. cube shape
 3. 3×3 grid
-4. plain stickers (no letters or markings; a logo on a center is allowed)
-5. single-colored stickers (no sticker split between two clearly different colors; a logo on a
+4. cubies in place (none sunk in, sticking out or deformed on its own)
+5. plain stickers (no letters or markings; a logo on a center is allowed)
+6. single-colored stickers (no sticker split between two clearly different colors; a logo on a
    center is allowed)
-6. at most six colors (fewer is fine: a color can be entirely on the hidden faces)
-7. one shade per color (on each face, all stickers of a color share a shade, so no lime next to
+7. at most six colors (fewer is fine: a color can be entirely on the hidden faces)
+8. one shade per color (on each face, all stickers of a color share a shade, so no lime next to
    green; real cubes stay within 3° of hue, a sticker 15° off is a second shade)
-8. standard palette (every visible color is white, yellow, red, orange, green or blue)
-9. standard color pairs (no piece joins white–yellow, red–orange or blue–green)
-10. scrambled (looks like a random scramble: at least 15 of the 24 visible stickers differ from
+9. standard palette (every visible color is white, yellow, red, orange, green or blue)
+10. standard color pairs (no piece joins white–yellow, red–orange or blue–green)
+11. scrambled (looks like a random scramble: at least 15 of the 24 visible stickers differ from
     their face's center, and at most one face shows a symmetric pattern; fewer than 1% of random
     scrambles fail this, while a cube one move from solved or a designed pattern does)
-11. distinct centers
-12. standard center order
-13. possible pieces
-14. unique pieces
-15. solvable
-16. solvable (standard)
+12. distinct centers
+13. standard center order
+14. possible pieces
+15. unique pieces
+16. solvable
+17. solvable (standard)
 
 Where a failed check has a clear culprit, the rubric records it as a *mark*. Marked stickers are
 named by facelet (`U9`, `F2`, ...), and faces that are not 3×3 are marked as a whole. Examples:
 the two centers that share a color, the corner or edge that can't exist, both copies of a
-duplicated piece, the stickers with letters on them, a sticker showing two colors or a second shade, the symmetric faces
+duplicated piece, the stickers with letters on them, a sticker showing two colors or a second shade, a cubie out of place, the symmetric faces
 of a designed pattern. Which piece counts as "impossible" can depend on the color scheme, so the smallest set of culprits is shown, among the schemes that got
 furthest. Twist, flip and parity failures belong to the whole cube and are not marked. Blocked
 checks are not marked either.
@@ -101,7 +103,7 @@ checks are not marked either.
 
 Each check also says who would notice it failing: anyone at a glance (wrong grid, letters, an extra
 color, not scrambled), anyone who has held a cube (two centers alike, a piece showing one color twice,
-a second shade), a cuber looking carefully (opposite colors on a piece, impossible or duplicated
+a second shade, a cubie out of place), a cuber looking carefully (opposite colors on a piece, impossible or duplicated
 pieces, center order) or only a solver (twist, flip, parity). A designed or shallow scramble doesn't
 count here: it is still a valid cube, with nothing to see through. An image fools everyone below the
 first who would notice, so each image fools *no one*, *a casual viewer*, *a cube owner*, *a cuber* or
@@ -165,9 +167,15 @@ Sticker extraction is pluggable (`extractor` in the TOML, or `--extractor` to ov
 
 - `vision` (default) reads three-face corner views automatically:
   1. `rembg` (U2-Net) cuts out the cube; the first use downloads its ~176 MB model.
-  2. The silhouette's hexagon and its vanishing points give the three faces.
-  3. OpenCV flattens each face and checks it is a 3×3 grid.
-  4. Each sticker's color is named by its CIELAB hue (white by low chroma).
+  2. The silhouette's hexagon and its vanishing points give the three faces. OpenCV flattens each face
+     and counts its rows and columns, to check it is a 3×3 grid.
+  3. An ideal cube of 27 cubies is posed in 3D (rotation, position and focal length) to match the
+     image, starting from the hexagon: its predicted seams are pulled onto the image's black plastic
+     and color edges, with the worst few cells ignored so a single deformed cubie cannot pull it off.
+     All three faces are fitted together, so a thin or blurred face borrows the others' precision.
+  4. Each sticker is read inside its fitted cell, and its color named by its CIELAB hue (white by low
+     chroma). A lone cell that is mostly not sticker color (plastic or background) holds a cubie
+     that is sunk in, sticking out or deformed: "cubies in place" fails.
 
   Whether the image shows a Rubik's cube at all is decided first:
   - **With the `ml` extra** (`uv sync --extra ml`), CLIP zero-shot recognition decides. An image that

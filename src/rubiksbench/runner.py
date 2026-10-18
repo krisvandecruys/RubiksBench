@@ -4,6 +4,7 @@ import random
 import re
 import shutil
 import sys
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -62,9 +63,7 @@ async def generate_run(config: BenchmarkConfig, store: RunStore, extractor: Extr
                 sample_id = f"{_slug(name)}__{index:04d}"
                 record = store.add_generation(sample_id, result, model_name=name, iteration=index)
                 if result.ok:
-                    evaluation = evaluate_sample(store, record, extractor)
-                    flags = ", ".join(evaluation.get("flags", []))
-                    status = evaluation["verdict"] + (f" ({flags})" if flags else "")
+                    status = _status(evaluate_sample(store, record, extractor))
                 else:
                     status = f"GENERATION FAILED {result.error.code}: {result.error.message}"
                 _log(f"[{name}] {index + 1}/{config.iterations} seed={seed} {result.latency_s:.1f}s {status}")
@@ -98,6 +97,23 @@ async def backfill_run(store: RunStore, extractor: Extractor) -> int:
     return len(failed)
 
 
+def _status(evaluation: dict[str, Any]) -> str:
+    """One image's result for a progress line, e.g. "INVALID (duplicate_centers) · validity 32% · 9/17"."""
+    flags = ", ".join(evaluation.get("flags", []))
+    status = evaluation["verdict"] + (f" ({flags})" if flags else "")
+    if (validity := evaluation.get("validity")) is not None:
+        status += f" · validity {validity['score']:.0%}"
+    if (rubric := evaluation.get("rubric")) is not None:
+        status += f" · {rubric['points']:g}/{rubric['max_points']:g}"
+    return status
+
+
+def _remaining(seconds: float) -> str:
+    if seconds < 90:
+        return f"~{seconds:.0f}s left"
+    return f"~{seconds / 60:.0f} min left"
+
+
 def evaluate_sample(store: RunStore, record: dict[str, Any], extractor: Extractor) -> dict[str, Any]:
     evaluation = evaluate_extraction(extractor.extract(store.root / record["image_path"]))
     store.add_evaluation(record["sample_id"], evaluation)
@@ -108,7 +124,7 @@ REFERENCE_MODEL = "Reference photos (real cubes)"
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 
 
-def import_references(store: RunStore, directory: Path, extractor: Extractor) -> int:
+def import_references(store: RunStore, directory: Path, extractor: Extractor, evaluate: bool = True) -> int:
     """Copy real cube photos into the run and score them like generated images.
 
     They are kept apart from the generation log and shown as a calibration row:
@@ -139,8 +155,9 @@ def import_references(store: RunStore, directory: Path, extractor: Extractor) ->
             "started_at": utc_now(),
         })
     store.set_references(records)
-    for record in records:
-        evaluate_sample(store, record, extractor)
+    if evaluate:
+        for record in records:
+            evaluate_sample(store, record, extractor)
     return len(records)
 
 
@@ -161,10 +178,19 @@ def evaluate_run(
     """
     store.clear_evaluations()
     if references is not None:
-        import_references(store, references, extractor)
-    for record in store.references() + store.generations():
-        if record.get("image_path") and not (references is not None and record.get("reference")):
-            evaluate_sample(store, record, extractor)
+        import_references(store, references, extractor, evaluate=False)
+    records = [r for r in store.references() + store.generations() if r.get("image_path")]
+    _log(f"scoring {len(records)} images ({getattr(extractor, 'name', 'extractor')} extractor; "
+         "the first one also loads the models, so it takes longer)")
+    durations: list[float] = []
+    for done, record in enumerate(records, 1):
+        begun = time.monotonic()
+        status = _status(evaluate_sample(store, record, extractor))
+        durations.append(time.monotonic() - begun)
+        # The first image includes loading the models, so it is left out of the estimate.
+        typical = sum(durations[1:]) / (len(durations) - 1) if len(durations) > 1 else None
+        left = f" · {_remaining(typical * (len(records) - done))}" if typical is not None and done < len(records) else ""
+        _log(f"[{record['model_name']}] #{record['iteration']}  {done}/{len(records)}  {durations[-1]:.1f}s  {status}{left}")
     return report_run(store)
 
 

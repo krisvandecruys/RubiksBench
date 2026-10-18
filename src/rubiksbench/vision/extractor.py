@@ -6,6 +6,7 @@ how sure it is, and the evaluator turns that into a verdict.
 """
 
 import json
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from ..cube.observation import Observation
 from ..evaluation.taxonomy import Flag
 from .color_classifier import StickerColor, classify, off_shade
 from .cube_detector import CubeDetector, FaceLayout
+from .cube_model import cell_residuals, fit_cube, out_of_place
 from .extraction import FAIL, INCONCLUSIVE, PASS, Extraction, Extractor, geometry
 from . import recognizer
 from .grid_extractor import SIZE, read_face
@@ -48,8 +50,9 @@ class AnnotationExtractor:
         stickers = FAIL if Flag.MARKED_STICKERS in flags else PASS
         single = FAIL if Flag.SPLIT_STICKERS in flags else PASS
         shades = FAIL if Flag.OFF_SHADE_STICKERS in flags else PASS
-        quality = {"cube": PASS, "shape": shape, "grid": grid, "stickers": stickers, "single_color": single,
-                   "shades": shades, "colors": PASS}
+        in_place = FAIL if Flag.CUBIES_OUT_OF_PLACE in flags else PASS
+        quality = {"cube": PASS, "shape": shape, "grid": grid, "in_place": in_place, "stickers": stickers,
+                   "single_color": single, "shades": shades, "colors": PASS}
         return Extraction(self.name, observation, 1.0, flags, {"annotation": path.name}, quality)
 
 
@@ -97,9 +100,11 @@ class VisionExtractor:
     # a rabbit 0.83, a teapot 0.71, a cube held in a hand 0.71).
     min_hexagon_fit = 0.93
 
-    def __init__(self, write_overlay: bool = True, recognize: bool | None = None):
+    def __init__(self, write_overlay: bool = True, recognize: bool | None = None, fit_model: bool = True):
         self.detector = CubeDetector()
         self.write_overlay = write_overlay
+        # Pose an ideal cube to the image (cube_model) and read the faces from the fit.
+        self.fit_model = fit_model
         # CLIP recognition runs when its optional dependencies are installed, unless disabled.
         use_clip = recognizer.available() if recognize is None else recognize
         self.recognizer = recognizer.CubeRecognizer() if use_clip else None
@@ -132,13 +137,27 @@ class VisionExtractor:
                 quality={"cube": recognized or INCONCLUSIVE, "shape": INCONCLUSIVE},
             )
 
-        details: dict[str, Any] = {"recognition": recognition, "layout": layout.to_dict(), "faces": {}}
+        # The silhouette's faces count the grid (an ideal cube would make any box look 3x3); the
+        # fitted cube's faces, when the fit improves on its start, read the stickers.
+        fitted = layout
+        misplaced: list[str] = []
+        model: dict[str, Any] = {"used": False}
+        if self.fit_model and (cube := fit_cube(image, layout.hexagon, layout.inner)) is not None:
+            model = {"used": cube.score > cube.start_score, "score": round(cube.score, 3),
+                     "start_score": round(cube.start_score, 3), "gap": round(cube.gap, 3)}
+            if model["used"]:
+                fitted = replace(layout, quads=cube.quads(), inner=cube.corner("C").astype(np.float32))
+                model["quads"] = {f: q.round(1).tolist() for f, q in fitted.quads.items()}
+                residuals = cell_residuals(image, cube)
+                misplaced = out_of_place(residuals)
+                model["residuals"] = {n: [round(a, 3), round(b, 3)] for n, (a, b) in residuals.items()}
+        details: dict[str, Any] = {"recognition": recognition, "layout": layout.to_dict(), "model": model, "faces": {}}
         flags: list[Flag] = []
         clean = layout.hexagon_fit >= self.min_hexagon_fit
         # Without CLIP, a clean cube silhouette is the evidence that a cube is there at all.
         cube = recognized or (PASS if clean else INCONCLUSIVE)
-        quality = {"cube": cube, "shape": PASS, "grid": PASS, "stickers": PASS, "single_color": PASS, "shades": PASS,
-                   "colors": PASS}
+        quality = {"cube": cube, "shape": PASS, "grid": PASS, "in_place": PASS, "stickers": PASS, "single_color": PASS,
+                   "shades": PASS, "colors": PASS}
         if cube != PASS:
             flags.append(Flag.VISION_LOW_CONFIDENCE)
         if layout.inner_spread > self.max_inner_spread or not clean:
@@ -148,6 +167,7 @@ class VisionExtractor:
         colors: dict[str, list[StickerColor]] = {}
         grids: dict[str, tuple[int, int]] = {}
         flattened = {face: read_face(image, quad) for face, quad in layout.quads.items()}
+        sampled = flattened if fitted is layout else {face: read_face(image, q) for face, q in fitted.quads.items()}
         sharpness = {face: sharpness_of(grid.image) for face, grid in flattened.items()}
         for face, grid in flattened.items():
             relative = sharpness[face] / (max(sharpness.values()) or 1.0)
@@ -156,10 +176,11 @@ class VisionExtractor:
                 details["faces"][face] = {
                     "skipped": f"too blurred to count its rows ({relative:.0%} of the sharpest face's detail)"}
                 continue
-            colors[face] = [classify(rgb) for rgb in grid.rgb]
+            cells = sampled[face]
+            colors[face] = [classify(rgb) for rgb in cells.rgb]
             faces[face] = [
                 "." if inferred and mixed > self.mixed_cell else c.label
-                for c, mixed in zip(colors[face], grid.second_color)
+                for c, mixed in zip(colors[face], cells.second_color)
             ]
             grids[face] = (3, 3) if inferred else (grid.columns, grid.rows)
             for count, dominance in ((grid.columns, grid.column_dominance), (grid.rows, grid.row_dominance)):
@@ -173,15 +194,15 @@ class VisionExtractor:
                 "rows": grid.rows,
                 "column_dominance": round(grid.column_dominance, 2),
                 "row_dominance": round(grid.row_dominance, 2),
-                "marking": [round(m, 3) for m in grid.marking],
-                "second_color": [round(s, 3) for s in grid.second_color],
+                "marking": [round(m, 3) for m in cells.marking],
+                "second_color": [round(s, 3) for s in cells.second_color],
                 **({"inferred_grid": f"too blurred to count its rows ({relative:.0%} of the sharpest face's "
                     f"detail; measured {grid.columns}x{grid.rows}), read as 3x3 like the other faces"}
                    if inferred else {}),
                 "stickers": [
                     {"label": c.label, "margin": round(c.margin, 2), "rgb": [round(v) for v in rgb],
                      "hue": round(c.hue, 1), "chroma": round(c.chroma, 1)}
-                    for c, rgb in zip(colors[face], grid.rgb)
+                    for c, rgb in zip(colors[face], cells.rgb)
                 ],
             }
         # Letters, split stickers and shades are judged on sharp faces only.
@@ -189,17 +210,24 @@ class VisionExtractor:
         marked = sum(m > self.marked_sticker for f in read.values() for i, m in enumerate(f["marking"]) if i != 4)
         details["marked_stickers"] = marked
         details["geometry"] = geometry(
-            (image.shape[1], image.shape[0]), layout.quads,
-            {f"{face}{i + 1}": cell for face, cells in sticker_quads(layout, grids).items() for i, cell in enumerate(cells)},
+            (image.shape[1], image.shape[0]), fitted.quads,
+            {f"{face}{i + 1}": cell for face, cells in sticker_quads(fitted, grids).items() for i, cell in enumerate(cells)},
             grids,
             [f"{face}{i + 1}" for face, d in read.items() for i, m in enumerate(d["marking"])
              if i != 4 and m > self.marked_sticker],
             # Centers are left out: they may carry a colored brand logo.
+            # A displaced cubie's cell holds plastic or background, not a split or a second shade.
             split := [f"{face}{i + 1}" for face, d in read.items() if grids[face] == (3, 3)
-                      for i, s in enumerate(d["second_color"]) if i != 4 and s > self.split_sticker],
+                      for i, s in enumerate(d["second_color"]) if i != 4 and s > self.split_sticker
+                      and f"{face}{i + 1}" not in misplaced],
             shades := [f"{face}{i + 1}" for face, face_colors in colors.items() if face in read
-                       and grids[face] == (3, 3) for i in off_shade(face_colors, self.min_color_margin)],
+                       and grids[face] == (3, 3) for i in off_shade(face_colors, self.min_color_margin)
+                       if f"{face}{i + 1}" not in misplaced],
+            misplaced := [name for name in misplaced if name[0] in read and grids[name[0]] == (3, 3)],
         )
+        if misplaced:
+            flags.append(Flag.CUBIES_OUT_OF_PLACE)
+            quality["in_place"] = FAIL
         if shades:
             flags.append(Flag.OFF_SHADE_STICKERS)
             quality["shades"] = FAIL
@@ -225,7 +253,7 @@ class VisionExtractor:
 
         if self.write_overlay:
             overlay_path = image_path.with_suffix(".extraction.jpg")
-            cv2.imwrite(str(overlay_path), draw_overlay(image, layout, faces, grids))
+            cv2.imwrite(str(overlay_path), draw_overlay(image, fitted, faces, grids))
             details["overlay"] = overlay_path.name
         observation = Observation.from_faces(faces)
         return Extraction(self.name, observation, min_margin, sorted(set(flags)), details, quality, alternatives)

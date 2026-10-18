@@ -48,7 +48,7 @@ def test_chance_distance_matches_its_constant():
     assert chance_distance(40, seed=1) == pytest.approx(CHANCE_DISTANCE, abs=0.75)
 
 
-QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "stickers": "pass", "single_color": "pass", "shades": "pass", "colors": "pass"}
+QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "in_place": "pass", "stickers": "pass", "single_color": "pass", "shades": "pass", "colors": "pass"}
 
 
 def scored(faces, quality=QUALITY, details=None):

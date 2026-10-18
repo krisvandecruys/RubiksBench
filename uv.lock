@@ -2027,7 +2027,7 @@ wheels = [
 
 [[package]]
 name = "rubiksbench"
-version = "0.4.6"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "fal-client" },
@@ -2038,6 +2038,7 @@ dependencies = [
     { name = "opencv-python-headless" },
     { name = "rembg", extra = ["cpu"] },
     { name = "runware-sdk" },
+    { name = "scipy" },
 ]
 
 [package.optional-dependencies]
@@ -2064,6 +2065,7 @@ requires-dist = [
     { name = "pillow", marker = "extra == 'ml'", specifier = ">=12.3.0" },
     { name = "rembg", extras = ["cpu"], specifier = ">=2.0.85" },
     { name = "runware-sdk", specifier = ">=1.7.5" },
+    { name = "scipy", specifier = ">=1.18.1" },
     { name = "torch", marker = "extra == 'ml'", specifier = ">=2.14.1" },
     { name = "torchvision", marker = "extra == 'ml'", specifier = ">=0.29.1" },
     { name = "transformers", marker = "extra == 'ml'", specifier = ">=5.20.1" },

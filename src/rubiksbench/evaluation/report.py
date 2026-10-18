@@ -225,6 +225,10 @@ a { color: var(--series); }
 code { font-size: 12px; }
 .badge { font-size: 11px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
 tr.reference td { background: color-mix(in srgb, var(--surface) 92%, var(--series)); }
+/* The first column (model names) stays put while wide tables scroll sideways. */
+.card th:first-child, .card td:first-child { position: sticky; left: 0; z-index: 1; background: var(--surface);
+  box-shadow: 1px 0 0 var(--grid); }
+tr.reference td:first-child { background: color-mix(in srgb, var(--surface) 92%, var(--series)); }
 table.scores td { vertical-align: top; }
 table.scores td.wrap { min-width: 180px; }
 @media (max-width: 900px) {

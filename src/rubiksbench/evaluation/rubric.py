@@ -56,6 +56,10 @@ CHECKS: tuple[Check, ...] = (
     Check("cube_detected", "Cube detected", "A cube-shaped object is found in the image."),
     Check("cube_shape", "Cube shape", "Three faces form a consistent corner view of a cube.", "a cube outline"),
     Check("grid_3x3", "3x3 grid", "Every visible face has 3 columns and 3 rows of cubies.", "three faces"),
+    Check("cubies_in_place", "Cubies in place",
+          "Every cubie sits where a real cube puts it: none sunk in, sticking out or deformed on its own. Found "
+          "by posing an ideal cube to the image; a lone cell that is mostly not sticker color holds such a "
+          "cubie.", CUBE, noticed_by=HELD),
     Check("plain_stickers", "Plain stickers",
           "Stickers carry no letters or other markings (a logo on a center is allowed).", CUBE),
     Check("single_color", "Single-colored stickers",
@@ -188,6 +192,9 @@ def marks(extraction: Extraction, validation: dict[str, Any] | None, results: di
     if "grid_3x3" in failed:
         out += [_mark("grid_3x3", f"{face}: {cols}x{rows} grid", faces=[face])
                 for face, (cols, rows) in geometry.get("grids", {}).items() if (cols, rows) != (3, 3)]
+    if "cubies_in_place" in failed:
+        out += [_mark("cubies_in_place", f"cubie out of place at {name}", [name])
+                for name in geometry.get("out_of_place", [])]
     if "plain_stickers" in failed and (marked := geometry.get("marked")):
         out.append(_mark("plain_stickers", "letters or markings", marked))
     if "single_color" in failed:
@@ -242,6 +249,7 @@ def _outcomes(extraction: Extraction, validation: dict[str, Any] | None) -> dict
                              ("grid_3x3", q.get("grid"))) if v is not None}
     if not all(out.get(c) == PASS for c in READ_AS_CUBE):
         return out
+    out["cubies_in_place"] = q.get("in_place", INCONCLUSIVE)
     out["plain_stickers"] = q.get("stickers", INCONCLUSIVE)
     out["single_color"] = q.get("single_color", INCONCLUSIVE)
     if obs is None:

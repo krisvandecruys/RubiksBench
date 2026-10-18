@@ -4,8 +4,8 @@
 
 ``repairs`` is the fewest observed stickers to recolor for a valid standard cube
 (``cube.repair``), ``defects`` the stickers no recoloring fixes (letters, two
-colors on one sticker, a second shade of a color) and ``chance`` the repair distance of
-random colors. So
+colors on one sticker, a second shade of a color, a cubie out of place) and
+``chance`` the repair distance of random colors. So
 100% is a valid cube and 0% no better than coloring the stickers at random.
 The scramble factor holds a barely scrambled cube or a designed pattern in slightly
 less regard: from 100% for a random-looking scramble down to 80%. An image that is
@@ -37,6 +37,7 @@ def validity(extraction: Extraction, checks: dict[str, str]) -> dict[str, Any]:
         set(geometry.get("marked", []) if checks.get("plain_stickers") == FAIL else [])
         | set(geometry.get("split", []) if checks.get("single_color") == FAIL else [])
         | set(geometry.get("off_shade", []) if checks.get("one_shade") == FAIL else [])
+        | set(geometry.get("out_of_place", []) if checks.get("cubies_in_place") == FAIL else [])
     )
     nearest = repair(extraction.observation)
     cost = nearest.distance + len(defects)

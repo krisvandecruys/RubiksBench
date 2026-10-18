@@ -98,8 +98,8 @@ def test_run_generates_serially_and_scores(tmp_path):
     generations = store.generations()
     assert all("seed" in g["request"] for g in generations)
     assert json.loads(paths["json"].read_text())["scores"] == scores
-    # One valid image (16 points) and one unannotated, so inconclusive at the first check (0.5).
-    assert good["rubric_mean"] == pytest.approx(8.25)
+    # One valid image (17 points) and one unannotated, so inconclusive at the first check (0.5).
+    assert good["rubric_mean"] == pytest.approx(8.75)
     # Validity: the valid image is 100%, the unreadable one 0%.
     assert good["validity_mean"] == pytest.approx(0.5)
     assert (good["passed"], good["failed"], good["generation_failures"]) == (1, 1, 0)
@@ -204,3 +204,18 @@ def test_versions_share_major_minor():
     from rubiksbench import EVALUATOR_VERSION, __version__
 
     assert EVALUATOR_VERSION.split(".")[:2] == __version__.split(".")[:2]
+
+
+def test_rescoring_reports_progress_per_image(tmp_path, capsys):
+    config = BenchmarkConfig.load(write(tmp_path / "b.toml", 'backend = "fake"\niterations = 2\n[models]\n"Good" = "good"\n'))
+    store = RunStore(tmp_path / "run")
+    write(store.images / "good__0000.json", json.dumps(REAL_CUBE))
+    asyncio.run(generate_run(config, store, AnnotationExtractor()))
+    capsys.readouterr()
+
+    evaluate_run(store, AnnotationExtractor())
+    lines = capsys.readouterr().err.splitlines()
+    assert lines[0].startswith("scoring 2 images (annotation extractor;")
+    assert lines[1].startswith("[Good] #0  1/2  ") and "VALID_STANDARD · validity 100% · 17/17" in lines[1]
+    # No estimate from the first image alone (it includes loading the models), none after the last.
+    assert "left" not in lines[1] and lines[2].startswith("[Good] #1  2/2  ") and "left" not in lines[2]

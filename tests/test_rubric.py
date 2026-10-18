@@ -5,7 +5,7 @@ from rubiksbench.vision.extraction import Extraction
 
 from .test_validator import REAL_CUBE
 
-QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "stickers": "pass", "single_color": "pass", "shades": "pass", "colors": "pass"}
+QUALITY = {"cube": "pass", "shape": "pass", "grid": "pass", "in_place": "pass", "stickers": "pass", "single_color": "pass", "shades": "pass", "colors": "pass"}
 
 
 def graded(faces):
@@ -16,7 +16,7 @@ def graded(faces):
 
 def test_real_cube_earns_every_point():
     result = graded(REAL_CUBE)
-    assert result["points"] == MAX_POINTS == 16
+    assert result["points"] == MAX_POINTS == 17
     assert "opposite_pairs" not in result
 
 

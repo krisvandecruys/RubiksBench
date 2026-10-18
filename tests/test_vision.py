@@ -183,9 +183,38 @@ def test_plain_stickers_are_single_colored(extractor, name):
 
 def test_a_blurred_face_is_read_like_its_sides(extractor):
     # Ideogram 4.5 #9: a shallow camera angle and lens blur leave the top face a thin, blurred
-    # sliver whose rows cannot be counted. Its sides are 3x3, so it is read as 3x3 too; cells
-    # that straddle two stickers in the stretched image are left unknown.
+    # sliver whose rows cannot be counted. Its sides are 3x3, so it is read as 3x3 too, and the
+    # fitted cube places its stickers precisely enough to read all nine.
     extraction = extractor.extract(FIXTURES / "ideogram-4-5-edge-on__0009.jpg")
     assert "inferred_grid" in extraction.details["faces"]["U"]
     assert Flag.WRONG_GRID_SIZE not in extraction.flags and extraction.quality["grid"] == "pass"
-    assert extraction.observation.to_faces() == {"U": "WRWGWGY..", "R": "GWRYBYRBG", "F": "WYRRWYBRW"}
+    assert extraction.observation.to_faces() == {"U": "WRWGWGYRW", "R": "GWRYBYRBG", "F": "WYRRWYBRW"}
+
+
+def test_a_displaced_cubie_is_out_of_place_not_two_colored(extractor):
+    # Nano Banana 2.1 #5: one cubie on the right face is sunk into the cube and its neighbour
+    # sticks out, which no turn can do. The fitted cube finds the sunk one (R6) as a lone cell
+    # of plastic and background; the protruding red is read as red, not as a split sticker.
+    extraction = extractor.extract(FIXTURES / "nano-banana-2-1-displaced__0005.jpg")
+    assert extraction.details["model"]["used"]
+    assert extraction.details["geometry"]["out_of_place"] == ["R6"]
+    assert Flag.CUBIES_OUT_OF_PLACE in extraction.flags and Flag.SPLIT_STICKERS not in extraction.flags
+    assert extraction.observation.to_faces()["R"][8] == "R"
+    record = evaluate_extraction(extraction, with_scramble=False)
+    assert record["verdict"] == "INVALID" and record["rubric"]["checks"]["cubies_in_place"] == "fail"
+
+
+@pytest.mark.parametrize("name", sorted(LABELLED))
+def test_well_formed_cubes_have_every_cubie_in_place(extractor, name):
+    extraction = extractor.extract(FIXTURES / f"{name}.jpg")
+    assert extraction.details["geometry"]["out_of_place"] == []
+
+
+def test_only_a_lone_misfit_cell_is_out_of_place():
+    from rubiksbench.vision.cube_model import out_of_place
+
+    clean = {f"{f}{i}": (0.0, 0.0) for f in "UFR" for i in range(1, 10)}
+    assert out_of_place(clean | {"R6": (0.31, 0.0)}) == ["R6"]
+    # A whole column off means the fit is off along an edge, not three displaced cubies.
+    assert out_of_place(clean | {"R3": (0.25, 0.0), "R6": (0.25, 0.0), "R9": (0.25, 0.0)}) == []
+    assert out_of_place(clean | {"U5": (0.4, 0.0)}) == []  # centers may carry a logo
