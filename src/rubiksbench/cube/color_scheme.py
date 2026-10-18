@@ -71,3 +71,37 @@ def orientations(scheme: ColorScheme) -> tuple[ColorScheme, ...]:
 
 
 STANDARD_ORIENTATIONS: Final = orientations(STANDARD_SCHEME)
+
+
+def rotation_moves(scheme: ColorScheme, start: ColorScheme = STANDARD_SCHEME) -> str | None:
+    """Whole-cube rotations in cubing notation (x: the front face turns up; y: the right
+    face turns to the front) that take ``start`` to ``scheme``, fewest first, or None when
+    ``scheme`` is not an orientation of ``start`` (e.g. a mirrored or non-standard one)."""
+    paths = {start: ""}
+    frontier = [start]
+    while frontier:
+        nxt = []
+        for current in frontier:
+            for name, rotation in (("x", _ROTATION_X), ("y", _ROTATION_Y)):
+                rotated = rotate(current, rotation)
+                if rotated not in paths:
+                    paths[rotated] = f"{paths[current]} {name}".strip()
+                    nxt.append(rotated)
+        frontier = nxt
+    if (path := paths.get(scheme)) is None:
+        return None
+    # Merge repeated turns: "x x" is x2, "x x x" is x'.
+    merged: list[str] = []
+    for name, count in _runs(path.split()):
+        merged.append({1: name, 2: f"{name}2", 3: f"{name}'"}[count])
+    return " ".join(merged)
+
+
+def _runs(moves: list[str]) -> list[tuple[str, int]]:
+    out: list[tuple[str, int]] = []
+    for move in moves:
+        if out and out[-1][0] == move:
+            out[-1] = (move, out[-1][1] + 1)
+        else:
+            out.append((move, 1))
+    return out

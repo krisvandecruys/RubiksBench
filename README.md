@@ -108,6 +108,15 @@ first who would notice, so each image fools *no one*, *a casual viewer*, *a cube
 *everyone*. The report shows this per image and per model ("fools a cube owner" = gets past someone
 who has held a cube).
 
+### Solutions
+
+For a valid image the report shows a solution: the moves that solve the cube the validator completed
+the image to, found with Kociemba's two-phase solver and checked by replaying them in an independent
+simulator (`magiccube`). It is *a* solution, not *the* solution: three faces are hidden, so many cubes
+match the image, and the two-phase solver is not optimal, so shorter solutions likely exist. When the
+colors are the standard ones, a link opens it in [Twizzle](https://alpha.twizzle.net/edit/), turned to
+show the same three faces as the image.
+
 ### Reading the image
 
 - A sticker whose color is close to a boundary (red or orange?) is evaluated both ways, for up to four
@@ -144,7 +153,8 @@ timestamped results:
 - `results-<UTC>.html` is a self-contained report with light and dark themes. It has:
   - the per-model scores: mean validity with an inline 95% CI strip, the rubric score and an outcome bar;
   - a points-per-check heatmap;
-  - a gallery of every image, most valid first, with the stickers to fix, its per-check results, its extraction overlay and the culprits of
+  - a gallery of every image, most valid first, with the stickers to fix (or, for a valid cube, a
+    solution and a link to view it in 3D), its per-check results, its extraction overlay and the culprits of
     failed checks outlined on the image (hover an outline to see why; a checkbox hides them);
   - the failure flags and the list of checks.
 

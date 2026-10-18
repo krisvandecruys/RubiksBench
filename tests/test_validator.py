@@ -271,3 +271,18 @@ def test_parity_failure_has_no_single_culprit():
     (a1, a2), (b1, b2) = EDGE_FACELETS[0], EDGE_FACELETS[1]
     report = validate(full(swap(facelets, (a1, b1), (a2, b2))), with_scramble=False).to_dict()
     assert report["abstract"]["culprits"] == []
+
+
+def test_rotation_moves_turn_the_standard_scheme_into_any_orientation():
+    from rubiksbench.cube.color_scheme import STANDARD_SCHEME, _ROTATION_X, _ROTATION_Y, rotate, rotation_moves
+
+    turns = {"x": _ROTATION_X, "y": _ROTATION_Y}
+    assert rotation_moves(STANDARD_SCHEME) == ""
+    for scheme in STANDARD_ORIENTATIONS:
+        current = STANDARD_SCHEME
+        for move in rotation_moves(scheme).split():
+            for _ in range({"2": 2, "'": 3}.get(move[1:], 1)):
+                current = rotate(current, turns[move[0]])
+        assert current == scheme
+    mirrored = ColorScheme.from_mapping(dict(STANDARD_SCHEME.as_dict(), R="O", L="R"))
+    assert rotation_moves(mirrored) is None

@@ -178,3 +178,22 @@ def test_site_has_sharing_tags_and_a_framed_preview(tmp_path):
     # The square is framed in the middle, not cut off at the bottom.
     red = np.argwhere(share[:, :, 2] > 180)
     assert 0.25 < red[:, 0].mean() / SHARE_SIZE[1] < 0.75
+
+
+def test_valid_images_show_a_solution_with_a_3d_view():
+    from urllib.parse import parse_qs, urlparse
+
+    from rubiksbench.cube.observation import Observation
+    from rubiksbench.cube.witness import apply_moves, invert
+    from rubiksbench.evaluation.evaluator import validate
+    from rubiksbench.evaluation.report import _solution
+
+    record = validate(Observation.from_faces(REAL_CUBE)).to_dict()
+    solution = _solution(record)
+    witness = record["standard"]["witness"]
+    # The moves undo the scramble that builds the completed cube.
+    assert apply_moves(witness["scramble"] + " " + solution["moves"]) == apply_moves("")
+    assert solution["count"] == len(solution["moves"].split()) and solution["moves"] == invert(witness["scramble"])
+    query = parse_qs(urlparse(solution["viewer"]).query)
+    assert query["alg"] == [solution["moves"]] and query["setup-alg"][0].endswith(witness["scramble"])
+    assert _solution({"verdict": "INVALID"}) is None

@@ -10,6 +10,7 @@ titles on every mark, and tables as the accessible view of every chart.
 
 import json
 import re
+from urllib.parse import urlencode
 from datetime import UTC, datetime
 from html import escape
 from pathlib import Path
@@ -20,7 +21,9 @@ from .. import EVALUATOR_VERSION, __version__
 REPOSITORY = "https://github.com/kvlxai/RubiksBench"
 from .rubric import CHECKS, FOOLS, MAX_POINTS, NOTICED_BY
 from .scoring import ranked
+from ..cube.color_scheme import ColorScheme, rotation_moves
 from ..cube.repair import CHANCE_DISTANCE
+from ..cube.witness import invert
 from .taxonomy import Verdict
 
 # Outcome colors (dataviz reference palette, validated as an adjacent set in this order).
@@ -207,6 +210,9 @@ svg.marks g:hover .line { stroke-width: 4; }
 #show-marks:not(:checked) ~ .gallery svg.marks { display: none; }
 .sample ul.marks { margin: 4px 0 0; padding-left: 16px; color: var(--ink); }
 .sample .repairs { margin-top: 4px; color: var(--ink); }
+.sample details.solution { margin-top: 4px; color: var(--ink); }
+.sample details.solution summary { cursor: pointer; }
+.sample details.solution code { display: block; margin: 4px 0; word-spacing: 2px; }
 .sample .body { padding: 8px 10px 10px; font-size: 12px; color: var(--ink-2); }
 .sample .head { display: flex; justify-content: space-between; gap: 8px; color: var(--ink); font-weight: 600;
   font-size: 13px; }
@@ -373,6 +379,20 @@ def _text(label: str) -> str:
     return re.sub(r"\b([WYROGBX])-(?=[WYROGBX]\b)", "\\1\u2011", escape(label))
 
 
+def _solution_html(solution: dict[str, Any] | None) -> str:
+    if not solution:
+        return ""
+    viewer = (f" <a href='{escape(solution['viewer'])}' target='_blank' rel='noopener'>View in 3D</a>"
+              if solution["viewer"] else "")
+    return (
+        f"<details class='solution'><summary>Solution: {solution['count']} moves</summary>"
+        f"<code>{escape(solution['moves'])}</code>"
+        "<div class='muted'>A solution, not the only one: three faces are hidden, so many cubes match this "
+        "image and the solver picked one of them. Found with Kociemba's two-phase solver, so shorter "
+        f"solutions likely exist.{viewer}</div></details>"
+    )
+
+
 def _fools(level: int | None) -> str:
     if level is None:
         return ""
@@ -439,7 +459,8 @@ def _samples_section(samples: list[dict[str, Any]], scores: dict[str, Any]) -> s
         cards.append(
             f"<div class='sample'>{image}<div class='body'><div class='head'><span>{escape(s['model_name'])} "
             f"#{s['iteration']}</span><span>{headline}</span></div>{_check_strip(s.get('checks'))}"
-            f"<div>{escape(s['verdict'])} · {seed}{overlay}</div>{_fools(s.get('fools'))}{_repairs(validity)}{problems}"
+            f"<div>{escape(s['verdict'])} · {seed}{overlay}</div>{_fools(s.get('fools'))}{_repairs(validity)}"
+            f"{_solution_html(s.get('solution'))}{problems}"
             f"<div class='flags muted'>{flags}</div></div></div>"
         )
     legend = _legend([(label, token) for label, token in CHECK_RESULTS.values()] + [("problem outline", "--mark")])
@@ -476,6 +497,26 @@ def render_html(stamp: str, run: dict[str, Any], scores: dict[str, Any], samples
         + _details_section(scores) + _checks_section()
         + "</main></body></html>\n"
     )
+
+
+# Twizzle (cubing.js) shows a 3D cube in the standard colors with a setup and a solution.
+VIEWER = "https://alpha.twizzle.net/edit/"
+
+
+def _solution(evaluation: dict[str, Any]) -> dict[str, Any] | None:
+    """For a valid image: the moves that solve the cube the solver completed it to, and a 3D
+    viewer link when its colors are the standard ones (the viewer shows only those)."""
+    side = {"VALID_STANDARD": "standard", "VALID_NONSTANDARD": "abstract"}.get(evaluation.get("verdict", ""))
+    witness = (evaluation.get(side) or {}).get("witness") if side else None
+    if not witness or witness.get("scramble") is None or not witness.get("scramble_verified"):
+        return None
+    moves = invert(witness["scramble"]) if witness["scramble"] else ""
+    rotation = rotation_moves(ColorScheme.from_mapping(witness["scheme"])) if side == "standard" else None
+    viewer = None
+    if rotation is not None:
+        # Turn the viewer's cube to this image's colors (top, front-left, front-right), then scramble.
+        viewer = VIEWER + "?" + urlencode({"setup-alg": f"{rotation} {witness['scramble']}".strip(), "alg": moves})
+    return {"moves": moves, "count": len(moves.split()), "viewer": viewer}
 
 
 def _sample_marks(evaluation: dict[str, Any]) -> dict[str, Any]:
@@ -521,6 +562,7 @@ def write_results(
                 "checks": e.get("rubric", {}).get("checks"),
                 "validity": e.get("validity"),
                 "fools": e.get("rubric", {}).get("fools"),
+                "solution": _solution(e),
                 "reference": bool(g.get("reference")),
                 **_sample_marks(e),
                 "overlay_path": (
