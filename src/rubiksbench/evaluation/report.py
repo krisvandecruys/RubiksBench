@@ -108,12 +108,12 @@ def _validity_strip(s: dict[str, Any]) -> str:
     return _strip(mean, ci, 1.0, VALIDITY_TICKS, label)
 
 
-def _bar(counts: list[int], items: list[tuple[str, str]]) -> str:
+def _bar(counts: list[int], items: list[tuple[str, str]], width: int = 80) -> str:
     """A stacked bar of counts, one segment per (label, color token)."""
     total = sum(counts)
     if not total:
         return ""
-    width, x, parts = 120, 0.0, []
+    x, parts = 0.0, []
     for count, (label, token) in zip(counts, items):
         if count:
             w = width * count / total
@@ -136,7 +136,7 @@ FOOLS_ITEMS = [(f"fools {who}", token) for who, token in zip(
 
 def _fools_bar(s: dict[str, Any]) -> str:
     counts = [s["fools"][who] for who in FOOLS] + [s["fools"]["unclear"]]
-    return _bar(counts, FOOLS_ITEMS + [("not fully checked", "--blocked")])
+    return _bar(counts, FOOLS_ITEMS + [("not fully checked", "--blocked")], width=64)
 
 
 def _check_strip(checks: dict[str, str] | None) -> str:
@@ -215,6 +215,12 @@ a { color: var(--series); }
 code { font-size: 12px; }
 .badge { font-size: 11px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; }
 tr.reference td { background: color-mix(in srgb, var(--surface) 92%, var(--series)); }
+table.scores td { vertical-align: top; }
+table.scores td.wrap { min-width: 180px; }
+@media (max-width: 900px) {
+  table.scores .chart { display: none; }
+  table.scores th, table.scores td { padding: 6px 4px; }
+}
 """
 DARK_TOKENS = (
     "color-scheme: dark; --page:#0d0d0d; --surface:#1a1a19; --ink:#f0efec; --ink-2:#c3c2b7; --muted:#898781;"
@@ -244,17 +250,20 @@ def _scores_section(scores: dict[str, Any]) -> str:
         rubric = "–" if s["rubric_mean"] is None else f"{s['rubric_mean']:.1f}"
         rubric_title = "" if rubric_ci is None else f" title='95% CI {rubric_ci[0]:.1f}–{rubric_ci[1]:.1f}'"
         cost = "–" if s["total_cost"] is None else f"${s['total_cost']:.3f}"
-        latency = "–" if s["mean_latency_s"] is None else f"{s['mean_latency_s']:.1f}s"
+        latency = "" if s["mean_latency_s"] is None else f"{s['mean_latency_s']:.0f}s each"
+        interval = "" if ci is None else f"<div class='muted'>{_pct(ci[0])}–{_pct(ci[1])}</div>"
+        errors = s["generation_failures"]
+        images_note = f"{s['passed']} passed" + (f" · {errors} error{'s' if errors != 1 else ''}" if errors else "")
         rows.append(
-            f"<tr{' class=reference' if s.get('reference') else ''}><td>{escape(model)}"
+            f"<tr{' class=reference' if s.get('reference') else ''}><td class='wrap'>{escape(model)}"
             + (" <span class='badge'>reference</span>" if s.get("reference") else "")
             + f"<div class='muted'><code>{escape(s['model'])}</code></div></td>"
-            f"<td><b>{_pct(s['validity_mean'])}</b></td><td>{'–' if ci is None else f'{_pct(ci[0])}–{_pct(ci[1])}'}</td>"
-            f"<td>{_validity_strip(s)}</td><td>{_fools_bar(s)}</td>"
+            f"<td title='95% CI'><b>{_pct(s['validity_mean'])}</b>{interval}</td>"
+            f"<td class='chart'>{_validity_strip(s)}</td><td>{_fools_bar(s)}</td>"
             f"<td{rubric_title}>{rubric}<span class='muted'>/{MAX_POINTS:.0f}</span></td>"
-            f"<td>{s['images']}</td>"
-            f"<td><b>{s['passed']}</b> <span class='muted'>({_pct(s['pass_rate'])})</span></td><td>{s['failed']}</td>"
-            f"<td>{s['generation_failures']}</td><td>{_outcome_bar(s)}</td><td>{cost}</td><td>{latency}</td></tr>"
+            f"<td title='Images passing all {MAX_POINTS:.0f} checks; requests that returned no image'>"
+            f"{s['images']}<div class='muted'>{images_note}</div></td>"
+            f"<td class='chart'>{_outcome_bar(s)}</td><td title='Total cost; mean generation time per image'>{cost}<div class='muted'>{latency}</div></td></tr>"
         )
     return (
         "<h2>Scores</h2><p><b>Validity</b> says how close an image comes to a valid, scrambled, standard 3x3 "
@@ -273,12 +282,9 @@ def _scores_section(scores: dict[str, Any]) -> str:
         "inconclusive, 0 when failed or blocked (see <a href='#checks'>Checks</a>). An image <b>passes</b> only "
         "if it passes all checks. Scores are over generated images; requests that returned no image are counted "
         "separately as generation errors.</p>"
-        "<div class='card'><table><thead><tr><th>Model</th><th>Validity</th><th>95% CI</th>"
-        f"<th>{_axis(1.0, VALIDITY_TICKS)}</th><th>Who it fools</th><th>Rubric</th><th>Images</th>"
-        f"<th title='Images passing all {MAX_POINTS:.0f} checks'>Passed</th>"
-        "<th title='Images missing at least one check'>Failed</th>"
-        "<th title='Requests that returned no image (API or model errors)'>Gen. errors</th>"
-        "<th>Outcomes</th><th>Cost</th><th>Latency</th></tr></thead><tbody>"
+        "<div class='card'><table class='scores'><thead><tr><th>Model</th><th>Validity</th>"
+        f"<th class='chart'>{_axis(1.0, VALIDITY_TICKS)}</th><th class='wrap'>Who it fools</th><th>Rubric</th><th>Images</th>"
+        "<th class='chart'>Outcomes</th><th>Cost</th></tr></thead><tbody>"
         + "".join(rows) + "</tbody></table>"
         + _legend(FOOLS_ITEMS + [("not fully checked", "--blocked")])
         + _legend([(label, token) for _, label, token in OUTCOMES]) + "</div>"
