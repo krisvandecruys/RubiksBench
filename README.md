@@ -19,6 +19,8 @@ uv run rubiksbench models flux --backend huggingface  # Hugging Face models serv
 uv run --env-file .env rubiksbench run configs/benchmark_runware.toml   # .env: RUNWARE_API_KEY / HF_TOKEN / FAL_KEY
 uv run rubiksbench score runs/<run>                     # re-evaluate + re-score an existing run (no API calls)
 uv run --env-file .env rubiksbench backfill runs/<run>  # resend a run's failed requests (same settings and seeds)
+uv run rubiksbench site runs/<run> site/ --url https://<you>.github.io/RubiksBench/ --share-image <sample>
+                                                  # shareable static site of the newest report (GitHub Pages)
 ```
 
 ## Scoring

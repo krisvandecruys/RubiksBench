@@ -148,3 +148,33 @@ def test_reference_photos_are_scored_as_a_separate_row(tmp_path):
     assert len(store.generations()) == 1  # the generation log is untouched
     html = paths["html"].read_text()
     assert "references/reference_1.png" in html and "real photo" in html
+
+
+def test_site_has_sharing_tags_and_a_framed_preview(tmp_path):
+    import cv2
+    import numpy as np
+
+    from rubiksbench.site import SHARE_SIZE, build_site
+
+    config = BenchmarkConfig.load(write(tmp_path / "b.toml", 'backend = "fake"\niterations = 1\n[models]\n"Good" = "good"\n'))
+    store = RunStore(tmp_path / "run")
+    write(store.images / "good__0000.json", json.dumps(REAL_CUBE))
+    asyncio.run(generate_run(config, store, AnnotationExtractor()))
+    # A real picture: a colored square (the "cube") low on a gray background.
+    picture = np.full((200, 200, 3), 127, np.uint8)
+    picture[110:180, 70:140] = (40, 40, 220)
+    cv2.imwrite(str(store.images / "good__0000.png"), picture)
+    report_run(store)
+
+    index = build_site(store.root, tmp_path / "site", url="https://example.org/bench/", title="RubiksBench",
+                       description="How good are models at cubes?", share_sample="good__0000", share_alt="A cube")
+    html = index.read_text()
+    assert "<title>RubiksBench</title>" in html
+    assert "<meta property='og:image' content='https://example.org/bench/share.jpg'>" in html
+    assert "<meta name='twitter:card' content='summary_large_image'>" in html
+    assert "images/good__0000.jpg" in html and (index.parent / "images" / "good__0000.jpg").exists()
+    share = cv2.imread(str(index.parent / "share.jpg"))
+    assert share.shape[1::-1] == SHARE_SIZE
+    # The square is framed in the middle, not cut off at the bottom.
+    red = np.argwhere(share[:, :, 2] > 180)
+    assert 0.25 < red[:, 0].mean() / SHARE_SIZE[1] < 0.75

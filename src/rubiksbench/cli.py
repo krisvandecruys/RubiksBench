@@ -4,6 +4,7 @@
     rubiksbench models "Flux 3"
     rubiksbench run configs/benchmark_runware.toml
     rubiksbench score runs/<run>
+    rubiksbench site runs/<run> site/ --url https://example.github.io/RubiksBench/ --share-image <sample>
 """
 
 import argparse
@@ -18,9 +19,17 @@ from .config import BenchmarkConfig
 from .cube.observation import Observation
 from .evaluation.evaluator import validate
 from .evaluation.scoring import format_table
+from .site import build_site
 from .runner import backfill_run, evaluate_run, generate_run, import_references, new_run_dir, report_run
 from .storage.results import RunStore
 from .vision.extractor import EXTRACTORS
+
+
+def cmd_site(args: argparse.Namespace) -> int:
+    index = build_site(Path(args.run_dir), Path(args.out_dir), url=args.url, title=args.title,
+                       description=args.description, share_sample=args.share_image, share_alt=args.share_alt)
+    print(f"site written to {index.parent}")
+    return 0
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
@@ -117,6 +126,16 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--extractor", choices=sorted(EXTRACTORS), help="override the run's extractor")
     p.add_argument("--references", help="directory of real cube photos to score alongside the run")
     p.set_defaults(func=lambda a: _score(RunStore(Path(a.run_dir)), a.extractor, a.references))
+
+    p = sub.add_parser("site", help="build a shareable static site (e.g. for GitHub Pages) from a run's newest report")
+    p.add_argument("run_dir")
+    p.add_argument("out_dir", help="directory to write the site into (its contents are replaced, a .git is kept)")
+    p.add_argument("--url", required=True, help="where the site will be published, for the sharing tags")
+    p.add_argument("--share-image", required=True, metavar="SAMPLE", help="sample id whose image becomes the preview")
+    p.add_argument("--share-alt", default="An AI-generated Rubik's Cube", help="description of the preview image")
+    p.add_argument("--title", default="RubiksBench")
+    p.add_argument("--description", default="How good are Text-to-Image models at generating valid Rubik's Cubes?")
+    p.set_defaults(func=cmd_site)
 
     args = parser.parse_args(argv)
     return args.func(args)
