@@ -185,8 +185,10 @@ td.wrap, th.wrap { white-space: normal; text-align: left; }
 .strip line.ci { stroke: var(--axis); stroke-width: 2; stroke-linecap: round; }
 .strip circle.dot { fill: var(--series); stroke: var(--surface); stroke-width: 2; }
 .strip text.tick { fill: var(--muted); font-size: 10px; text-anchor: middle; }
-.heat td.h { text-align: center; min-width: 52px; font-size: 12px; border: 2px solid var(--surface); }
-.heat th.c { text-align: center; white-space: normal; min-width: 52px; max-width: 72px; }
+.heat td.h { text-align: center; min-width: 38px; padding: 6px 2px; font-size: 12px; border: 2px solid var(--surface); }
+.heat th.c { text-align: center; white-space: normal; min-width: 38px; max-width: 64px; padding: 4px 2px;
+  font-size: 11px; font-weight: 500; line-height: 1.25; }
+.heat td.m { white-space: normal; min-width: 140px; max-width: 200px; }
 HEAT_CLASSES
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; color: var(--ink-2); font-size: 12px; margin: 8px 0; }
 .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px;
@@ -308,7 +310,7 @@ def _heatmap_section(scores: dict[str, Any]) -> str:
                     f"<td class='h h{round(value * 10)}' title='{escape(model)} · {escape(c.title)}: "
                     f"{_pct(value)} of points'>{_pct(value)}</td>"
                 )
-        rows.append(f"<tr><td>{escape(model)}</td>{''.join(cells)}</tr>")
+        rows.append(f"<tr><td class='m'>{escape(model)}</td>{''.join(cells)}</tr>")
     return (
         "<h2>Points per check</h2><p>Share of the available points each model earned on each check. "
         "A check that cannot be decided (e.g. sticker colors on a face that is not 3x3) is blocked and scores 0.</p>"
