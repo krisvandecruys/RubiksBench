@@ -15,7 +15,9 @@ from html import escape
 from pathlib import Path
 from typing import Any
 
-from .. import EVALUATOR_VERSION
+from .. import EVALUATOR_VERSION, __version__
+
+REPOSITORY = "https://github.com/kvlxai/RubiksBench"
 from .rubric import CHECKS, FOOLS, MAX_POINTS, NOTICED_BY
 from .scoring import ranked
 from ..cube.repair import CHANCE_DISTANCE
@@ -468,6 +470,8 @@ def render_html(stamp: str, run: dict[str, Any], scores: dict[str, Any], samples
         "<meta name='viewport' content='width=device-width, initial-scale=1'>"
         f"<title>RubiksBench results</title><style>{_css()}</style></head><body><main>"
         f"<h1>Rubik's Cube benchmark results</h1>{meta}"
+        f"<p class='meta'>Made with <a href='{REPOSITORY}'>RubiksBench</a> {__version__}: the benchmark's code, "
+        "method and how to run it.</p>"
         + _scores_section(scores) + _heatmap_section(scores) + _samples_section(samples, scores)
         + _details_section(scores) + _checks_section()
         + "</main></body></html>\n"
