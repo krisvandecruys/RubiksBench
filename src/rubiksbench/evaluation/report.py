@@ -418,6 +418,13 @@ def _repairs(validity: dict[str, Any] | None) -> str:
     return f"<div class='repairs' title='{title}'>{count} {noun} to fix: {_text(', '.join(parts))}{scramble}</div>"
 
 
+def _inset(polygon: list[list[float]], keep: float = 0.88) -> list[tuple[float, float]]:
+    """The polygon shrunk towards its center."""
+    cx = sum(x for x, _ in polygon) / len(polygon)
+    cy = sum(y for _, y in polygon) / len(polygon)
+    return [(cx + (x - cx) * keep, cy + (y - cy) * keep) for x, y in polygon]
+
+
 def _marks_svg(s: dict[str, Any]) -> str:
     """Outlines of the stickers or faces behind each failed check, over the image (hover for why)."""
     if not (marks := [m for m in s.get("marks") or [] if m["polygons"]]):
@@ -425,7 +432,8 @@ def _marks_svg(s: dict[str, Any]) -> str:
     width, height = s["image_size"]
     groups = []
     for m in marks:
-        points = [" ".join(f"{x:g},{y:g}" for x, y in poly) for poly in m["polygons"]]
+        # Each outline sits slightly inside its sticker (or face), so neighbouring outlines stay apart.
+        points = [" ".join(f"{x:.1f},{y:.1f}" for x, y in _inset(poly)) for poly in m["polygons"]]
         halo = "".join(f"<polygon class='halo' points='{p}'/>" for p in points)
         line = "".join(f"<polygon class='line' points='{p}'/>" for p in points)
         groups.append(f"<g><title>{escape(m['label'])}</title>{halo}{line}</g>")
