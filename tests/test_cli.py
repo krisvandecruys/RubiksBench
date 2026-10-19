@@ -3,6 +3,7 @@ import json
 import pytest
 
 from rubiksbench import cli
+from rubiksbench.evaluation.evaluator import evaluate_extraction
 from rubiksbench.vision.extraction import Extraction
 from rubiksbench.vision.extractor import AnnotationExtractor
 
@@ -59,3 +60,41 @@ def test_validate_image_rejects_missing_files_and_directories(tmp_path, capsys, 
     captured = capsys.readouterr()
     assert not captured.out
     assert "not a regular file" in captured.err
+
+
+@pytest.mark.parametrize("verbose", [[], ["-v"], ["--verbose"]])
+def test_validate_image_json_preserves_full_report(tmp_path, capsys, verbose):
+    image = tmp_path / "cube.png"
+    image.touch()
+    image.with_suffix(".json").write_text(json.dumps(REAL_CUBE))
+    expected = evaluate_extraction(AnnotationExtractor().extract(image), with_scramble=False)
+
+    assert cli.main(["validate-image", str(image), "--extractor", "annotation",
+                     "--no-scramble", "--json", *verbose]) == 0
+    assert json.loads(capsys.readouterr().out) == expected
+
+
+@pytest.mark.parametrize("verbose", ["-v", "--verbose"])
+def test_validate_image_verbose_lists_only_failed_checks(tmp_path, capsys, monkeypatch, verbose):
+    image = tmp_path / "cube.png"
+    image.touch()
+    monkeypatch.setitem(cli.EXTRACTORS, "vision", AnnotationExtractor)
+    monkeypatch.setattr(cli, "evaluate_extraction", lambda *a, **kw: {
+        "verdict": "INVALID", "rubric": {"points": 1.5, "max_points": 17, "checks": {
+            "distinct_centers": "fail", "cube_detected": "pass",
+            "grid_3x3": "inconclusive", "center_order": "blocked",
+        }},
+    })
+    assert cli.main(["validate-image", str(image), verbose]) == 0
+    assert capsys.readouterr().out == (
+        "INVALID · 1.5/17\nFailed rubric checks:\n"
+        "  - Distinct centers: No two visible centers share a color.\n"
+    )
+
+
+def test_validate_image_verbose_without_failures(tmp_path, capsys, monkeypatch):
+    image = tmp_path / "cube.png"
+    image.touch()
+    monkeypatch.setitem(cli.EXTRACTORS, "vision", AnnotationExtractor)
+    assert cli.main(["validate-image", str(image), "-v"]) == 0
+    assert capsys.readouterr().out.endswith("No failed rubric checks.\n")

@@ -19,6 +19,7 @@ from .backends import available_backends, get_backend
 from .config import BenchmarkConfig
 from .cube.observation import Observation
 from .evaluation.evaluator import evaluate_extraction, validate
+from .evaluation.rubric import CHECKS, FAIL
 from .evaluation.scoring import format_table
 from .site import build_site
 from .runner import backfill_run, evaluate_run, format_status, generate_run, import_references, new_run_dir, report_run
@@ -66,7 +67,15 @@ def cmd_validate_image(args: argparse.Namespace) -> int:
         return 1
     extraction = EXTRACTORS[args.extractor]().extract(image)
     report = evaluate_extraction(extraction, with_scramble=not args.no_scramble)
-    print(format_status(report))
+    if args.json:
+        print(json.dumps(report, indent=2))
+    else:
+        print(format_status(report))
+        if args.verbose:
+            failed = [check for check in CHECKS if report["rubric"]["checks"].get(check.id) == FAIL]
+            print("Failed rubric checks:" if failed else "No failed rubric checks.")
+            for check in failed:
+                print(f"  - {check.title}: {check.description}")
     return 0
 
 
@@ -119,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("image", help="path to a cube image")
     p.add_argument("--extractor", default="vision", choices=sorted(EXTRACTORS),
                    help="sticker extractor (default: vision)")
+    p.add_argument("--json", action="store_true", help="print the full report as JSON (overrides --verbose)")
+    p.add_argument("-v", "--verbose", action="store_true", help="also describe failed rubric checks in text output")
     p.add_argument("--no-scramble", action="store_true", help="skip computing a witness scramble")
     p.set_defaults(func=cmd_validate_image)
 
