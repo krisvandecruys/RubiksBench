@@ -21,7 +21,7 @@ from .cube.observation import Observation
 from .evaluation.evaluator import evaluate_extraction, validate
 from .evaluation.scoring import format_table
 from .site import build_site
-from .runner import backfill_run, evaluate_run, generate_run, import_references, new_run_dir, report_run
+from .runner import backfill_run, evaluate_run, format_status, generate_run, import_references, new_run_dir, report_run
 from .storage.results import RunStore
 from .vision.extractor import EXTRACTORS
 
@@ -66,7 +66,7 @@ def cmd_validate_image(args: argparse.Namespace) -> int:
         return 1
     extraction = EXTRACTORS[args.extractor]().extract(image)
     report = evaluate_extraction(extraction, with_scramble=not args.no_scramble)
-    print(json.dumps(report, indent=2))
+    print(format_status(report))
     return 0
 
 

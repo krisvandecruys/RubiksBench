@@ -16,10 +16,9 @@ def test_validate_image_scores_annotation(tmp_path, capsys):
 
     assert cli.main(["validate-image", str(image), "--extractor", "annotation", "--no-scramble"]) == 0
 
-    report = json.loads(capsys.readouterr().out)
-    assert report["extractor"] == "annotation"
-    assert report["verdict"] == "VALID_STANDARD"
-    assert "rubric" in report and "validity" in report
+    output = capsys.readouterr().out
+    assert output.startswith("VALID_STANDARD · validity ")
+    assert "/17\n" in output
 
 
 @pytest.mark.parametrize("no_scramble", [False, True])
@@ -36,13 +35,14 @@ def test_validate_image_defaults_to_vision_and_forwards_scramble(tmp_path, monke
     def evaluate(value, *, with_scramble):
         assert value is extraction
         assert with_scramble is not no_scramble
-        return {"verdict": "INCONCLUSIVE"}
+        return {"verdict": "INVALID", "flags": ["duplicate_centers"],
+                "validity": {"score": 0.32}, "rubric": {"points": 9, "max_points": 17}}
 
     monkeypatch.setitem(cli.EXTRACTORS, "vision", FakeVision)
     monkeypatch.setattr(cli, "evaluate_extraction", evaluate)
     args = ["validate-image", str(image)] + (["--no-scramble"] if no_scramble else [])
     assert cli.main(args) == 0
-    assert json.loads(capsys.readouterr().out)["verdict"] == "INCONCLUSIVE"
+    assert capsys.readouterr().out == "INVALID (duplicate_centers) · validity 32% · 9/17\n"
 
 
 def test_validate_image_without_extraction_is_inconclusive(tmp_path, monkeypatch, capsys):
@@ -50,7 +50,7 @@ def test_validate_image_without_extraction_is_inconclusive(tmp_path, monkeypatch
     image.touch()
     monkeypatch.setitem(cli.EXTRACTORS, "vision", AnnotationExtractor)
     assert cli.main(["validate-image", str(image)]) == 0
-    assert json.loads(capsys.readouterr().out)["verdict"] == "INCONCLUSIVE"
+    assert capsys.readouterr().out.startswith("INCONCLUSIVE (no_extraction) · validity 0% · ")
 
 
 @pytest.mark.parametrize("name", ["missing.png", "."])

@@ -25,8 +25,8 @@ uv run rubiksbench site runs/<run> site/ --url https://<you>.github.io/RubiksBen
                                                   # shareable static site of the newest report (GitHub Pages)
 ```
 
-`validate-image` prints a JSON report with the verdict, validity score, rubric checks, and
-extraction details. Use `--extractor sam` or `--extractor annotation` to select another reader,
+`validate-image` prints the same text summary as a benchmark run: the verdict, failure flags,
+validity percentage, and rubric points (for example, `INVALID (duplicate_centers) · validity 32% · 9/17`). Use `--extractor sam` or `--extractor annotation` to select another reader,
 and `--no-scramble` to skip computing a witness scramble. The default `vision` extractor expects
 a three-face corner view and writes `<image stem>.extraction.jpg` beside the input. Its first
 use downloads the background-removal model (see Sticker extraction below). An unreadable image
